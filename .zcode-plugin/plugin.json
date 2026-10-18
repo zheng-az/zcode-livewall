@@ -1,0 +1,24 @@
+{
+  "name": "zcode-livewall",
+  "version": "0.1.0",
+  "description": "Animated video wallpaper for the ZCode desktop client, using local Wallpaper Engine projects and Monet colors sampled from a video frame.",
+  "author": {
+    "name": "zheng-az"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/zheng-az/zcode-livewall",
+  "commands": "commands",
+  "skills": "skills",
+  "mcpServers": {
+    "zcode-livewall": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"
+      ],
+      "env": {
+        "ZCODE_LIVEWALL_DATA_DIR": "${ZCODE_PLUGIN_DATA}"
+      }
+    }
+  },
+  "category": "themes"
+}

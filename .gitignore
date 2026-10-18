@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+
+# build output: intermediate tsc output is excluded, but the final
+# esbuild bundles in dist/ ARE committed so users never need to build
+!dist/
+dist/*
+!dist/cli.js
+!dist/mcp/
+!dist/mcp/server.js
+*.tsbuildinfo
+
+# packaged zips
+packages/
+
+# logs
+*.log
+npm-debug.log*
+
+# env & secrets
+.env
+.env.*
+
+# editor / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# local scratch: CDP probe profiles, captured bundles, working notes
+experiments/
+assets/
+.zcode/

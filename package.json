@@ -1,0 +1,56 @@
+{
+  "name": "zcode-livewall",
+  "version": "0.1.0",
+  "description": "Animated (video) wallpaper for the ZCode desktop client, sourced from local Wallpaper Engine projects, with Monet dynamic colors extracted from a video frame.",
+  "type": "module",
+  "license": "MIT",
+  "author": "zheng-az",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "bin": {
+    "zcode-livewall": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "bundle": "npm run build && node scripts/bundle.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "keywords": [
+    "zcode",
+    "zcode-plugin",
+    "live-wallpaper",
+    "wallpaper-engine",
+    "video-wallpaper",
+    "material-design-3",
+    "monet",
+    "cdp"
+  ],
+  "files": [
+    "dist",
+    "commands",
+    "skills",
+    ".zcode-plugin",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@material/material-color-utilities": "^0.3.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "adm-zip": "^0.6.1",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zheng-az/zcode-livewall.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zheng-az/zcode-livewall/issues"
+  },
+  "homepage": "https://github.com/zheng-az/zcode-livewall#readme"
+}
