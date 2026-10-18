@@ -21,13 +21,6 @@ The companion to [zcode-beautify](https://github.com/Logocceai/zcode-beautify): 
 - **Agent control** — a `/livewall` slash command, a skill, and five MCP tools: `list_wallpapers`, `set_live_wallpaper`, `tune_live_wallpaper`, `livewall_status`, `stop_live_wallpaper`.
 - **Non-destructive** — never modifies Wallpaper Engine or takes over the desktop wallpaper; both can run at the same time.
 
-## Requirements
-
-- Node >= 20
-- ZCode desktop client running with `--remote-debugging-port`
-- Wallpaper Engine — optional. Without it, local video and image files still work.
-- `ffmpeg` — optional. Used for frame sampling (Monet colors) and poster generation; looked up via `FFMPEG_PATH`, then `PATH`. Without it the wallpaper still plays, only color extraction is skipped.
-
 ## Install
 
 1. ZCode → **Plugin Marketplace** → **Add** → **Add Plugin Marketplace**
@@ -37,63 +30,21 @@ The companion to [zcode-beautify](https://github.com/Logocceai/zcode-beautify): 
 
 Adding a marketplace does not install anything by itself. From a clone, the root is the directory holding `marketplace.json`.
 
-## Usage
-
-### 1. Start ZCode with the debug port (once)
-
-The plugin injects over the Chrome DevTools Protocol, which production builds do not open by default.
+Then start ZCode with the debug port, once:
 
 ```bash
 node dist/cli.js launch          # starts ZCode with --remote-debugging-port
 node dist/cli.js status          # confirms CDP is reachable
 ```
 
-If ZCode is already running without the flag, quit it completely (including the tray icon) and run `launch` again.
+The plugin injects over the Chrome DevTools Protocol, which production builds do not open by default. If ZCode is already running without the flag, quit it completely (including the tray icon) and run `launch` again.
 
-### 2. Pick a wallpaper
+To pick a wallpaper:
 
 ```bash
 node dist/cli.js list                    # playable Wallpaper Engine projects
-node dist/cli.js apply 3030081182        # by project id from the list
-node dist/cli.js apply D:/clip.mp4       # or any local video / image file
+node dist/cli.js apply 3030081182        # by project id, or any local video / image path
+node dist/cli.js serve --detach          # resident service + live settings panel
 ```
 
-`apply` options:
-
-| Option | Effect |
-| --- | --- |
-| `--blur <px>` | Blur radius |
-| `--dim <0-100>` | Darken the wallpaper |
-| `--fit <cover\|contain>` | Fill and crop, or letterbox over a blurred backdrop |
-| `--no-monet` | Keep ZCode's original colors |
-
-### 3. Tune it live
-
-```bash
-node dist/cli.js serve --detach   # resident service + live settings panel
-```
-
-Once `serve` is running, a 🎞 button appears in ZCode's bottom-right corner: swap wallpaper, blur, dim, playback speed, pause, framing, Monet, visibility and reset — all previewing instantly and persisting across restarts.
-
-### 4. Stop
-
-```bash
-node dist/cli.js stop             # stop the service
-node dist/cli.js reset            # remove the animated background
-```
-
-The wallpaper survives renderer reloads while the service is up.
-
-## Agent control
-
-A `/livewall` slash command, a skill, and five MCP tools: `list_wallpapers`, `set_live_wallpaper`, `tune_live_wallpaper`, `livewall_status`, `stop_live_wallpaper`. Ask ZCode to "change the wallpaper" or "make the background darker" and it drives the same service.
-
-## Troubleshooting
-
-| Symptom | Cause / fix |
-| --- | --- |
-| CDP unreachable, wallpaper never appears | ZCode was started without the debug port. Quit it completely and rerun `launch`. |
-| Wallpaper plays but colors never change | `ffmpeg` missing. Install it or set `FFMPEG_PATH`. |
-| Scene wallpapers look blurry | Scene projects fall back to their tiny `preview` image; no sharper version is extractable from `scene.pkg`. Use a `video` or `web` project for a crisp result. |
-| High CPU on 4K sources | Enable the optimize toggle in the panel: the video is transcoded to a display-sized copy in the background. |
-| `apply` finds no projects | Wallpaper Engine is not installed, or no project resolves to a real media file. Use a local file path instead. |
+Once `serve` is running, a 🎞 button appears in ZCode's bottom-right corner for switching and tuning. Requires Node >= 20; `ffmpeg` is optional and only used for color extraction.
