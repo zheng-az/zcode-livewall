@@ -35,6 +35,7 @@ import { themeFromVideo, themeFromImage, grabPosterJpeg, findFfmpeg } from "./vi
 import { optimizedCopy, probeVideo, needsOptimize, isOptimizing, clearOptimizeRetries, cachedCopy } from "./optimize.js";
 import { buildPanelScript } from "../panel/panel-script.js";
 import { isZcodeProcessRunning } from "./zcode-process.js";
+import { killZcode, launchZcode } from "./launch.js";
 import {
   cachedSteamPreview,
   refreshSteamPreview,
@@ -43,6 +44,15 @@ import {
 } from "./steam-preview.js";
 
 const POLL_MS = 1500;
+/**
+ * Grace period before the resident service restarts a CDP-less ZCode with the
+ * debug port. It must outlast a normal app update / crash-restart cycle so we
+ * only act when ZCode is genuinely up and unreachable: the user experience is
+ * "the wallpaper was gone for half a minute, then came back by itself".
+ */
+const AUTORESTART_DELAY_MS = 30_000;
+/** Min interval between auto-restart attempts, so a refusing ZCode is not spawned in a loop. */
+const AUTORESTART_COOLDOWN_MS = 10 * 60_000;
 /** Uploads arrive as base64, so the body cap has to allow the encoded size. */
 const MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
 const MAX_BODY = Math.ceil(MAX_UPLOAD_BYTES * 1.4);
@@ -554,6 +564,46 @@ export async function startServe(opts: ServeOptions): Promise<void> {
     posterJobs.set(sample, job);
   }
 
+  /**
+   * Auto-recovery: when ZCode is running but was started without the debug
+   * port, injection is impossible and the wallpaper stays gone. Instead of
+   * waiting forever, restart ZCode with --remote-debugging-port after a grace
+   * period (config.autoRestart, default on). Cooldown prevents spawn loops.
+   */
+  let cdpMissingSince = 0;
+  let lastAutoRestart = 0;
+
+  async function maybeAutoRestart(): Promise<void> {
+    if (!currentConfig().autoRestart) return;
+    const now = Date.now();
+    if (!cdpMissingSince) cdpMissingSince = now;
+    if (now - cdpMissingSince < AUTORESTART_DELAY_MS) return;
+    if (now - lastAutoRestart < AUTORESTART_COOLDOWN_MS) return;
+    if (!(await isZcodeProcessRunning())) {
+      cdpMissingSince = now; // nothing to restart; wait for ZCode to appear
+      return;
+    }
+    lastAutoRestart = now;
+    console.log("serve: ZCode has no CDP port — restarting it with --remote-debugging-port");
+    // launchZcode alone refuses while an instance is running (it cannot grow a
+    // port), so the CDP-less instance must go first. Graceful close keeps the
+    // user's work; if ZCode refuses to die the restart is abandoned for now.
+    await killZcode();
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (!(await isZcodeProcessRunning())) break;
+    }
+    if (await isZcodeProcessRunning()) {
+      console.error("serve: ZCode did not exit; auto-restart abandoned for this cooldown");
+      return;
+    }
+    const r = await launchZcode(fixedCdpPort ?? 9222).catch((err) => {
+      console.error(`serve: auto-restart failed — ${(err as Error).message}`);
+      return { started: false } as const;
+    });
+    if (r.started) console.log("serve: ZCode restarted with CDP; injection resumes on the next poll");
+  }
+
   async function poll(): Promise<void> {
     const config = currentConfig();
     let port = fixedCdpPort;
@@ -574,10 +624,12 @@ export async function startServe(opts: ServeOptions): Promise<void> {
             updatedAt: new Date().toISOString(),
           };
         }
+        await maybeAutoRestart();
         return;
       }
     }
     currentCdpPort = port;
+    cdpMissingSince = 0;
 
     try {
       const targets = pickRendererTargets(await listTargets(port));
@@ -633,6 +685,9 @@ export async function startServe(opts: ServeOptions): Promise<void> {
           updatedAt: new Date().toISOString(),
         };
       }
+      // The port answered before but is gone now (ZCode restarted without the
+      // flag, or is mid-restart) — run the same recovery path as discovery.
+      await maybeAutoRestart();
     }
   }
 

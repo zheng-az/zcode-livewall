@@ -7,8 +7,12 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { currentConfig, loadConfig, readServeToken, saveConfig, DEFAULT_CONFIG } from "../core/config.js";
+import { currentConfig, loadConfig, pidFile, readServeToken, saveConfig, DEFAULT_CONFIG } from "../core/config.js";
 import { discoverCdpPort, listTargets, pickRendererTargets } from "../core/cdp.js";
 import { findProject, listPlayable } from "../core/we-library.js";
 import { findFfmpeg } from "../core/video-theme.js";
@@ -20,6 +24,42 @@ const server = new McpServer({ name: "zcode-livewall", version: __PLUGIN_VERSION
 function apiBase(): string {
   return `http://127.0.0.1:${currentConfig().apiPort}`;
 }
+
+function isServeRunning(): boolean {
+  try {
+    const pid = Number(fs.readFileSync(pidFile(), "utf8").trim());
+    return Number.isFinite(pid) && pid > 0 && process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The MCP host starts this server with every ZCode session, which makes it the
+ * earliest reliable hook: if the resident service is not up (reboot, manual
+ * stop, crash), spawn it detached so the wallpaper recovers on its own instead
+ * of surfacing "service is not running" to the agent.
+ */
+function ensureServe(): void {
+  if (isServeRunning()) return;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const cli = path.join(here, "..", "cli.js");
+  if (!fs.existsSync(cli)) return;
+  const cfg = currentConfig();
+  try {
+    const child = spawn(process.execPath, [cli, "serve", "--detach"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.unref();
+    console.error(`[zcode-livewall] resident service was down — spawned serve (api port ${cfg.apiPort})`);
+  } catch (err) {
+    console.error(`[zcode-livewall] could not spawn serve: ${(err as Error).message}`);
+  }
+}
+
+ensureServe();
 
 async function call(path: string, body?: unknown): Promise<any> {
   const token = readServeToken();

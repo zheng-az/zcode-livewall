@@ -31,6 +31,12 @@ export interface LiveWallConfig {
   paused: boolean;
   pauseOnBlur: boolean;
   optimize: boolean;
+  /**
+   * When ZCode runs without a CDP port (the plugin cannot inject without one),
+   * the resident service restarts it with --remote-debugging-port after a
+   * grace period instead of waiting forever.
+   */
+  autoRestart: boolean;
 }
 
 export const DEFAULT_CONFIG: LiveWallConfig = {
@@ -46,6 +52,7 @@ export const DEFAULT_CONFIG: LiveWallConfig = {
   paused: false,
   pauseOnBlur: true,
   optimize: false,
+  autoRestart: true,
 };
 
 export function dataDir(): string {

@@ -3262,8 +3262,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3672,8 +3672,8 @@ var require_schemes = __commonJS({
       }
       if (wsComponent.resourceName) {
         const queryIndex = wsComponent.resourceName.indexOf("?");
-        const path3 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const path4 = queryIndex === -1 ? wsComponent.resourceName : wsComponent.resourceName.slice(0, queryIndex);
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = queryIndex === -1 ? void 0 : wsComponent.resourceName.slice(queryIndex + 1);
         wsComponent.resourceName = void 0;
       }
@@ -7186,12 +7186,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs3, exportName) {
+    function addFormats(ajv, list, fs4, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs3[f]);
+        ajv.addFormat(f, fs4[f]);
     }
     module.exports = exports = formatsPlugin;
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -7677,8 +7677,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7794,11 +7794,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -11435,10 +11435,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11758,11 +11758,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -15173,11 +15173,11 @@ function normalizeObjectSchema(schema) {
   }
   return void 0;
 }
-function getDotPath(path3) {
-  if (path3.length === 0) {
+function getDotPath(path4) {
+  if (path4.length === 0) {
     return "object root";
   }
-  return path3.reduce((acc, seg, index) => {
+  return path4.reduce((acc, seg, index) => {
     if (index === 0) {
       return String(seg);
     }
@@ -21496,6 +21496,12 @@ var StdioServerTransport = class {
   }
 };
 
+// dist/mcp/server.js
+import { spawn } from "node:child_process";
+import fs3 from "node:fs";
+import path3 from "node:path";
+import { fileURLToPath } from "node:url";
+
 // dist/core/config.js
 import fs from "node:fs";
 import os from "node:os";
@@ -21512,7 +21518,8 @@ var DEFAULT_CONFIG = {
   speed: 1,
   paused: false,
   pauseOnBlur: true,
-  optimize: false
+  optimize: false,
+  autoRestart: true
 };
 function dataDir() {
   const override = process.env.ZCODE_LIVEWALL_DATA_DIR;
@@ -21530,6 +21537,9 @@ function configFile() {
 }
 function tokenFile() {
   return path.join(dataDir(), "serve-token");
+}
+function pidFile() {
+  return path.join(dataDir(), "serve.pid");
 }
 var cachedConfig;
 function loadConfig() {
@@ -25238,12 +25248,41 @@ var server = new McpServer({ name: "zcode-livewall", version: "0.1.0" });
 function apiBase() {
   return `http://127.0.0.1:${currentConfig().apiPort}`;
 }
-async function call(path3, body) {
+function isServeRunning() {
+  try {
+    const pid = Number(fs3.readFileSync(pidFile(), "utf8").trim());
+    return Number.isFinite(pid) && pid > 0 && process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+}
+function ensureServe() {
+  if (isServeRunning())
+    return;
+  const here = path3.dirname(fileURLToPath(import.meta.url));
+  const cli = path3.join(here, "..", "cli.js");
+  if (!fs3.existsSync(cli))
+    return;
+  const cfg = currentConfig();
+  try {
+    const child = spawn(process.execPath, [cli, "serve", "--detach"], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    });
+    child.unref();
+    console.error(`[zcode-livewall] resident service was down \u2014 spawned serve (api port ${cfg.apiPort})`);
+  } catch (err) {
+    console.error(`[zcode-livewall] could not spawn serve: ${err.message}`);
+  }
+}
+ensureServe();
+async function call(path4, body) {
   const token = readServeToken();
   if (!token) {
     throw new Error("The livewall service is not running. Start it with `node dist/cli.js serve --detach` from the plugin directory.");
   }
-  const res = await fetch(apiBase() + path3, {
+  const res = await fetch(apiBase() + path4, {
     method: body === void 0 ? "GET" : "POST",
     headers: {
       "x-zlw-token": token,

@@ -22,7 +22,8 @@ var DEFAULT_CONFIG = {
   speed: 1,
   paused: false,
   pauseOnBlur: true,
-  optimize: false
+  optimize: false,
+  autoRestart: true
 };
 function dataDir() {
   const override = process.env.ZCODE_LIVEWALL_DATA_DIR;
@@ -334,8 +335,8 @@ function findProject(idOrTitle) {
 
 // dist/core/serve.js
 import http2 from "node:http";
-import fs7 from "node:fs";
-import path7 from "node:path";
+import fs8 from "node:fs";
+import path8 from "node:path";
 import { randomBytes as randomBytes2, createHash as createHash2 } from "node:crypto";
 
 // dist/core/video-theme.js
@@ -6196,10 +6197,69 @@ async function isZcodeProcessRunning() {
   }
 }
 
-// dist/core/steam-preview.js
+// dist/core/launch.js
+import { execFile as execFile4, spawn } from "node:child_process";
+import { promisify as promisify4 } from "node:util";
 import fs6 from "node:fs";
-import path6 from "node:path";
 import os3 from "node:os";
+import path6 from "node:path";
+var execFileAsync4 = promisify4(execFile4);
+var ZCODE_EXE_CANDIDATES = process.platform === "win32" ? [
+  process.env.ZCODE_WINDOWS_APP_INSTALL_DIR ? path6.join(process.env.ZCODE_WINDOWS_APP_INSTALL_DIR, "ZCode.exe") : void 0,
+  "C:\\Program Files\\ZCode\\ZCode.exe",
+  "D:\\ZCode\\ZCode.exe",
+  path6.join(os3.homedir(), "AppData", "Local", "Programs", "ZCode", "ZCode.exe")
+].filter(Boolean) : process.platform === "darwin" ? ["/Applications/ZCode.app/Contents/MacOS/ZCode"] : ["/usr/bin/zcode", "/opt/ZCode/zcode"];
+function findZcodeExecutable() {
+  return ZCODE_EXE_CANDIDATES.find((p) => {
+    try {
+      return fs6.statSync(p).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
+async function launchZcode(port) {
+  if (await discoverCdpPort(port)) {
+    return { started: false, reason: "already-running-with-cdp" };
+  }
+  const exe = findZcodeExecutable();
+  if (!exe) {
+    throw new Error("ZCode executable not found; set ZCODE_WINDOWS_APP_INSTALL_DIR or install ZCode to a known path.");
+  }
+  if (await isZcodeProcessRunning()) {
+    return { started: false, reason: "running-without-cdp" };
+  }
+  const child = spawn(exe, [`--remote-debugging-port=${port}`], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true
+  });
+  child.unref();
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    if (await discoverCdpPort(port))
+      return { started: true };
+  }
+  throw new Error("ZCode started but no CDP endpoint appeared. Quit ZCode completely and try again.");
+}
+async function killZcode() {
+  try {
+    if (process.platform === "win32") {
+      await execFileAsync4("taskkill", ["/F", "/IM", "ZCode.exe"], { windowsHide: true });
+    } else {
+      await execFileAsync4("pkill", ["-x", process.platform === "darwin" ? "ZCode" : "zcode"]);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// dist/core/steam-preview.js
+import fs7 from "node:fs";
+import path7 from "node:path";
+import os4 from "node:os";
 var STEAM_API = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
 var WORKSHOP_APP_ID = "431960";
 var DETAILS_TIMEOUT_MS = 6e3;
@@ -6213,49 +6273,49 @@ function isWorkshopId(projectId) {
 function localWorkshopProject(projectId) {
   const id = projectId.trim();
   for (const lib of findSteamLibraries()) {
-    const p = path6.join(lib, "steamapps", "workshop", "content", WORKSHOP_APP_ID, id, "project.json");
-    if (fs6.existsSync(p))
+    const p = path7.join(lib, "steamapps", "workshop", "content", WORKSHOP_APP_ID, id, "project.json");
+    if (fs7.existsSync(p))
       return true;
   }
   return false;
 }
 function previewDir() {
-  return path6.join(dataDir(), "steam-previews");
+  return path7.join(dataDir(), "steam-previews");
 }
 function previewCachePath(projectId) {
-  return path6.join(previewDir(), `${projectId.trim()}.jpg`);
+  return path7.join(previewDir(), `${projectId.trim()}.jpg`);
 }
 function cachedSteamPreview(projectId) {
   if (!isWorkshopId(projectId))
     return void 0;
   try {
     const p = previewCachePath(projectId);
-    return fs6.existsSync(p) && fs6.statSync(p).size > 30 * 1024 ? p : void 0;
+    return fs7.existsSync(p) && fs7.statSync(p).size > 30 * 1024 ? p : void 0;
   } catch {
     return void 0;
   }
 }
 function imageSize(imagePath) {
   try {
-    const fd = fs6.openSync(imagePath, "r");
+    const fd = fs7.openSync(imagePath, "r");
     const head = Buffer.alloc(64);
-    fs6.readSync(fd, head, 0, 64, 0);
-    fs6.closeSync(fd);
+    fs7.readSync(fd, head, 0, 64, 0);
+    fs7.closeSync(fd);
     if (head[0] === 71 && head[1] === 73 && head[2] === 70) {
       return { width: head.readUInt16LE(6), height: head.readUInt16LE(8) };
     }
     if (head[0] === 137 && head[1] === 80 && head[2] === 78) {
       const png = Buffer.alloc(24);
-      const fd2 = fs6.openSync(imagePath, "r");
-      fs6.readSync(fd2, png, 0, 24, 0);
-      fs6.closeSync(fd2);
+      const fd2 = fs7.openSync(imagePath, "r");
+      fs7.readSync(fd2, png, 0, 24, 0);
+      fs7.closeSync(fd2);
       return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
     }
     if (head[0] === 255 && head[1] === 216) {
-      const fd3 = fs6.openSync(imagePath, "r");
-      const scan = Buffer.alloc(Math.min(fs6.fstatSync(fd3).size, 512 * 1024));
-      fs6.readSync(fd3, scan, 0, scan.length, 0);
-      fs6.closeSync(fd3);
+      const fd3 = fs7.openSync(imagePath, "r");
+      const scan = Buffer.alloc(Math.min(fs7.fstatSync(fd3).size, 512 * 1024));
+      fs7.readSync(fd3, scan, 0, scan.length, 0);
+      fs7.closeSync(fd3);
       let p = 2;
       while (p + 9 < scan.length) {
         if (scan[p] !== 255) {
@@ -6313,7 +6373,7 @@ async function downloadTo(url, dest) {
   if (!res.ok)
     throw new Error(`HTTP ${res.status}`);
   const ab = await res.arrayBuffer();
-  fs6.writeFileSync(dest, Buffer.from(ab));
+  fs7.writeFileSync(dest, Buffer.from(ab));
 }
 function refreshSteamPreview(projectId, onDone) {
   const id = projectId.trim();
@@ -6329,15 +6389,15 @@ function refreshSteamPreview(projectId, onDone) {
       const url = await fetchDetails(id);
       if (!url)
         throw new Error("no preview_url");
-      fs6.mkdirSync(previewDir(), { recursive: true });
-      const tmp = path6.join(os3.tmpdir(), `zlw-prev-${id}-${Math.random().toString(36).slice(2)}.img`);
+      fs7.mkdirSync(previewDir(), { recursive: true });
+      const tmp = path7.join(os4.tmpdir(), `zlw-prev-${id}-${Math.random().toString(36).slice(2)}.img`);
       await downloadTo(url, tmp);
       const dim = imageSize(tmp);
       if (!dim)
         throw new Error("unreadable image");
-      if (fs6.statSync(tmp).size < 30 * 1024)
+      if (fs7.statSync(tmp).size < 30 * 1024)
         throw new Error("download too small");
-      fs6.renameSync(tmp, previewCachePath(id));
+      fs7.renameSync(tmp, previewCachePath(id));
       failures2.delete(id);
       onDone?.(previewCachePath(id));
     } catch (err) {
@@ -6353,6 +6413,8 @@ function refreshSteamPreview(projectId, onDone) {
 
 // dist/core/serve.js
 var POLL_MS = 1500;
+var AUTORESTART_DELAY_MS = 3e4;
+var AUTORESTART_COOLDOWN_MS = 10 * 6e4;
 var MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
 var MAX_BODY = Math.ceil(MAX_UPLOAD_BYTES * 1.4);
 var runtimeState = { cdpReachable: false, rendererCount: 0, zcodeRunning: false };
@@ -6363,7 +6425,7 @@ var THEME_RETRY_COOLDOWN_MS = 5 * 60 * 1e3;
 var themeFailedAt = /* @__PURE__ */ new Map();
 function posterFileFor(samplePath) {
   const hash = createHash2("sha1").update(samplePath.toLowerCase()).digest("hex").slice(0, 16);
-  return path7.join(dataDir(), `poster-${hash}.jpg`);
+  return path8.join(dataDir(), `poster-${hash}.jpg`);
 }
 var posterJobs = /* @__PURE__ */ new Map();
 var optimizingChecked = /* @__PURE__ */ new Set();
@@ -6391,7 +6453,7 @@ function captureViewNeeds(conn) {
 function themeFor(sourcePath, opts = {}) {
   let mtimeMs = 0;
   try {
-    mtimeMs = fs7.statSync(sourcePath).mtimeMs;
+    mtimeMs = fs8.statSync(sourcePath).mtimeMs;
   } catch {
     return Promise.resolve(void 0);
   }
@@ -6426,7 +6488,7 @@ function themeFor(sourcePath, opts = {}) {
 function themeForImage(sourcePath, opts = {}) {
   let mtimeMs = 0;
   try {
-    mtimeMs = fs7.statSync(sourcePath).mtimeMs;
+    mtimeMs = fs8.statSync(sourcePath).mtimeMs;
   } catch {
     return Promise.resolve(void 0);
   }
@@ -6466,7 +6528,7 @@ function isAnimatedImage(p) {
   return /\.gif$/i.test(p);
 }
 function resolveSource(config) {
-  if (!config.source || !fs7.existsSync(config.source))
+  if (!config.source || !fs8.existsSync(config.source))
     return void 0;
   if (isWeb(config.source))
     return { kind: "web", path: config.source, posterPath: void 0 };
@@ -6486,7 +6548,7 @@ function resolveSource(config) {
 async function ensureOptimized(mediaPath) {
   let stamp = "0";
   try {
-    const st = fs7.statSync(mediaPath);
+    const st = fs8.statSync(mediaPath);
     stamp = `${Math.round(st.mtimeMs)}-${st.size}`;
   } catch {
     return;
@@ -6500,14 +6562,14 @@ async function ensureOptimized(mediaPath) {
     optimizedCopy(mediaPath, displayTargetHeight());
 }
 async function startServe(opts) {
-  fs7.mkdirSync(dataDir(), { recursive: true });
+  fs8.mkdirSync(dataDir(), { recursive: true });
   const stored = currentConfig();
   const apiPort = opts.apiPort ?? stored.apiPort;
   const mediaPort = opts.mediaPort ?? stored.mediaPort;
   const fixedCdpPort = opts.cdpPort ?? (stored.cdpPort > 0 ? stored.cdpPort : void 0);
   const token = randomBytes2(16).toString("hex");
-  fs7.writeFileSync(tokenFile(), token);
-  fs7.writeFileSync(pidFile(), String(process.pid));
+  fs8.writeFileSync(tokenFile(), token);
+  fs8.writeFileSync(pidFile(), String(process.pid));
   const media = await startMediaServer(mediaPort);
   let currentCdpPort;
   const held = /* @__PURE__ */ new Map();
@@ -6524,7 +6586,7 @@ async function startServe(opts) {
     let posterPath = source.posterPath;
     if (!posterPath && source.kind === "video") {
       const posterFile = posterFileFor(source.originalPath ?? source.path);
-      if (fs7.existsSync(posterFile))
+      if (fs8.existsSync(posterFile))
         posterPath = posterFile;
     }
     if (config.projectId && (source.kind === "image" || source.kind === "web")) {
@@ -6643,13 +6705,13 @@ async function startServe(opts) {
       if (theme.posterJpeg) {
         try {
           const posterFile = posterFileFor(sample);
-          fs7.writeFileSync(posterFile, theme.posterJpeg);
-          for (const entry of fs7.readdirSync(dataDir())) {
-            const isStale = entry === "poster.jpg" || entry.startsWith("poster-") && entry !== path7.basename(posterFile);
+          fs8.writeFileSync(posterFile, theme.posterJpeg);
+          for (const entry of fs8.readdirSync(dataDir())) {
+            const isStale = entry === "poster.jpg" || entry.startsWith("poster-") && entry !== path8.basename(posterFile);
             if (!isStale)
               continue;
             try {
-              fs7.rmSync(path7.join(dataDir(), entry), { force: true });
+              fs8.rmSync(path8.join(dataDir(), entry), { force: true });
             } catch {
             }
           }
@@ -6668,7 +6730,7 @@ async function startServe(opts) {
     const sample = source.originalPath ?? source.path;
     const posterFile = posterFileFor(sample);
     try {
-      if (fs7.existsSync(posterFile))
+      if (fs8.existsSync(posterFile))
         return;
     } catch {
     }
@@ -6682,7 +6744,7 @@ async function startServe(opts) {
         const from = cachedCopy(sample, displayTargetHeight()) ?? sample;
         const buf = await grabPosterJpeg(ff.path, from, 0);
         if (buf)
-          fs7.writeFileSync(posterFile, buf);
+          fs8.writeFileSync(posterFile, buf);
       } catch {
       } finally {
         posterJobs.delete(sample);
@@ -6694,6 +6756,41 @@ async function startServe(opts) {
       }
     })();
     posterJobs.set(sample, job);
+  }
+  let cdpMissingSince = 0;
+  let lastAutoRestart = 0;
+  async function maybeAutoRestart() {
+    if (!currentConfig().autoRestart)
+      return;
+    const now = Date.now();
+    if (!cdpMissingSince)
+      cdpMissingSince = now;
+    if (now - cdpMissingSince < AUTORESTART_DELAY_MS)
+      return;
+    if (now - lastAutoRestart < AUTORESTART_COOLDOWN_MS)
+      return;
+    if (!await isZcodeProcessRunning()) {
+      cdpMissingSince = now;
+      return;
+    }
+    lastAutoRestart = now;
+    console.log("serve: ZCode has no CDP port \u2014 restarting it with --remote-debugging-port");
+    await killZcode();
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r2) => setTimeout(r2, 500));
+      if (!await isZcodeProcessRunning())
+        break;
+    }
+    if (await isZcodeProcessRunning()) {
+      console.error("serve: ZCode did not exit; auto-restart abandoned for this cooldown");
+      return;
+    }
+    const r = await launchZcode(fixedCdpPort ?? 9222).catch((err) => {
+      console.error(`serve: auto-restart failed \u2014 ${err.message}`);
+      return { started: false };
+    });
+    if (r.started)
+      console.log("serve: ZCode restarted with CDP; injection resumes on the next poll");
   }
   async function poll() {
     const config = currentConfig();
@@ -6715,10 +6812,12 @@ async function startServe(opts) {
             updatedAt: (/* @__PURE__ */ new Date()).toISOString()
           };
         }
+        await maybeAutoRestart();
         return;
       }
     }
     currentCdpPort = port;
+    cdpMissingSince = 0;
     try {
       const targets = pickRendererTargets(await listTargets(port));
       const current = new Set(targets.map((t) => t.id));
@@ -6768,6 +6867,7 @@ async function startServe(opts) {
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
         };
       }
+      await maybeAutoRestart();
     }
   }
   function publicConfig(config) {
@@ -6791,7 +6891,7 @@ async function startServe(opts) {
        * resolve the wrong wallpaper (or fall back to the first entry).
        */
       source: source?.originalPath ?? source?.path,
-      sourceName: config.projectId ? findProject(config.projectId)?.title ?? path7.basename(config.source ?? "") : config.source ? path7.basename(config.source) : void 0,
+      sourceName: config.projectId ? findProject(config.projectId)?.title ?? path8.basename(config.source ?? "") : config.source ? path8.basename(config.source) : void 0,
       cdpPort: runtimeState.cdpPort,
       mediaPort: media.port
     };
@@ -6889,7 +6989,7 @@ async function startServe(opts) {
           title: p.title,
           type: p.type,
           source: p.source,
-          media: p.mediaPath ? path7.basename(p.mediaPath) : void 0
+          media: p.mediaPath ? path8.basename(p.mediaPath) : void 0
         }));
         return sendJson(res, 200, { projects });
       }
@@ -6915,8 +7015,8 @@ async function startServe(opts) {
       }
       if (req.method === "POST" && url.pathname === "/api/source/path") {
         const body = JSON.parse(await readBody(req));
-        const file = typeof body?.path === "string" ? path7.resolve(body.path) : "";
-        if (!file || !fs7.existsSync(file)) {
+        const file = typeof body?.path === "string" ? path8.resolve(body.path) : "";
+        if (!file || !fs8.existsSync(file)) {
           return sendJson(res, 400, { error: "file not found" });
         }
         if (file.startsWith(cacheDir())) {
@@ -6937,7 +7037,7 @@ async function startServe(opts) {
       }
       if (req.method === "POST" && url.pathname === "/api/upload") {
         const body = JSON.parse(await readBody(req));
-        const name = typeof body?.name === "string" ? path7.basename(body.name) : "";
+        const name = typeof body?.name === "string" ? path8.basename(body.name) : "";
         const dataUri = typeof body?.dataUri === "string" ? body.dataUri : "";
         const m = /^data:(video\/[\w.+-]+|image\/[\w.+-]+);base64,(.+)$/.exec(dataUri);
         if (!m || !name)
@@ -6948,8 +7048,8 @@ async function startServe(opts) {
             error: `file too large (max ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB)`
           });
         }
-        const dir = path7.join(dataDir(), "uploads");
-        fs7.mkdirSync(dir, { recursive: true });
+        const dir = path8.join(dataDir(), "uploads");
+        fs8.mkdirSync(dir, { recursive: true });
         const extByMime = {
           "image/jpeg": ".jpg",
           "image/png": ".png",
@@ -6963,10 +7063,10 @@ async function startServe(opts) {
           "video/x-matroska": ".mkv"
         };
         let safeName = name;
-        if (!path7.extname(safeName))
+        if (!path8.extname(safeName))
           safeName += extByMime[m[1]] ?? "";
-        const dest = path7.join(dir, safeName);
-        fs7.writeFileSync(dest, bytes);
+        const dest = path8.join(dir, safeName);
+        fs8.writeFileSync(dest, bytes);
         const config = {
           ...currentConfig(),
           source: dest,
@@ -7020,7 +7120,7 @@ async function startServe(opts) {
   server.on("error", (err) => console.error(`serve: http error \u2014 ${err.message}`));
   const shutdown = async () => {
     try {
-      fs7.rmSync(pidFile(), { force: true });
+      fs8.rmSync(pidFile(), { force: true });
     } catch {
     }
     for (const [, s] of held)
@@ -7071,53 +7171,6 @@ async function existingServePid(apiPort) {
   } catch {
     return void 0;
   }
-}
-
-// dist/core/launch.js
-import { execFile as execFile4, spawn } from "node:child_process";
-import { promisify as promisify4 } from "node:util";
-import fs8 from "node:fs";
-import os4 from "node:os";
-import path8 from "node:path";
-var execFileAsync4 = promisify4(execFile4);
-var ZCODE_EXE_CANDIDATES = process.platform === "win32" ? [
-  process.env.ZCODE_WINDOWS_APP_INSTALL_DIR ? path8.join(process.env.ZCODE_WINDOWS_APP_INSTALL_DIR, "ZCode.exe") : void 0,
-  "C:\\Program Files\\ZCode\\ZCode.exe",
-  "D:\\ZCode\\ZCode.exe",
-  path8.join(os4.homedir(), "AppData", "Local", "Programs", "ZCode", "ZCode.exe")
-].filter(Boolean) : process.platform === "darwin" ? ["/Applications/ZCode.app/Contents/MacOS/ZCode"] : ["/usr/bin/zcode", "/opt/ZCode/zcode"];
-function findZcodeExecutable() {
-  return ZCODE_EXE_CANDIDATES.find((p) => {
-    try {
-      return fs8.statSync(p).isFile();
-    } catch {
-      return false;
-    }
-  });
-}
-async function launchZcode(port) {
-  if (await discoverCdpPort(port)) {
-    return { started: false, reason: "already-running-with-cdp" };
-  }
-  const exe = findZcodeExecutable();
-  if (!exe) {
-    throw new Error("ZCode executable not found; set ZCODE_WINDOWS_APP_INSTALL_DIR or install ZCode to a known path.");
-  }
-  if (await isZcodeProcessRunning()) {
-    return { started: false, reason: "running-without-cdp" };
-  }
-  const child = spawn(exe, [`--remote-debugging-port=${port}`], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true
-  });
-  child.unref();
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 500));
-    if (await discoverCdpPort(port))
-      return { started: true };
-  }
-  throw new Error("ZCode started but no CDP endpoint appeared. Quit ZCode completely and try again.");
 }
 
 // dist/cli.js
