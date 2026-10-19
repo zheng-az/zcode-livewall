@@ -25244,7 +25244,7 @@ async function findFfmpeg() {
 }
 
 // dist/mcp/server.js
-var server = new McpServer({ name: "zcode-livewall", version: "0.1.0" });
+var server = new McpServer({ name: "zcode-livewall", version: "0.2.0" });
 function apiBase() {
   return `http://127.0.0.1:${currentConfig().apiPort}`;
 }

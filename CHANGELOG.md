@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.2.0
+
+Automatic recovery: the wallpaper now comes back on its own after restarts —
+no manual command needed.
+
+### Added
+
+- **MCP server auto-spawn** — the MCP server (loaded by ZCode on every
+  session) checks the resident service's pid file at startup and spawns
+  `serve --detach` when it is down, so a dead service recovers by itself.
+- **CDP-less ZCode auto-restart** — when ZCode runs without
+  `--remote-debugging-port` for 30 s, the resident service gracefully closes
+  it and relaunches with the debug port (10-minute cooldown; disable with
+  `autoRestart: false` in `config.json`).
+- **Boot-time autostart recipes** — README documents registry entries that
+  start ZCode with the debug port and the resident service at login.
+- `autoRestart` config switch (default on).
+
+### Fixed
+
+- Bundle rebuild produced a duplicate `createRequire` banner when run on a
+  previously bundled `dist/`; the build now starts from clean tsc output.
+
 ## v0.1.0
 
 First release. Brings local Wallpaper Engine projects into the ZCode desktop

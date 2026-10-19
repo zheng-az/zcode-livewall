@@ -1,6 +1,6 @@
 {
   "name": "zcode-livewall",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Animated (video) wallpaper for the ZCode desktop client, sourced from local Wallpaper Engine projects, with Monet dynamic colors extracted from a video frame.",
   "type": "module",
   "license": "MIT",
