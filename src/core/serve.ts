@@ -409,25 +409,27 @@ export async function startServe(opts: ServeOptions): Promise<void> {
     opts: { blockTheme?: boolean } = {}
   ): Promise<{ payload: ReturnType<typeof buildPayload>; input: PayloadInput } | undefined> {
     const source = resolveSource(config);
-    if (!source) return undefined;
-    const urls = await mediaUrls(config, source);
+    const urls: { videoUrl?: string; posterUrl?: string; webUrl?: string } = source
+      ? await mediaUrls(config, source)
+      : {};
     // Sample the original, not the downscaled cache: re-encoding shifts colors.
-    const samplePath = source.originalPath ?? source.path;
-    const theme =
-      source.kind === "video"
-        ? await themeFor(samplePath, { block: opts.blockTheme })
+    const samplePath = source?.originalPath ?? source?.path;
+    const theme = !source
+      ? undefined
+      : source.kind === "video"
+        ? await themeFor(samplePath!, { block: opts.blockTheme })
         : source.kind === "image"
-          ? await themeForImage(samplePath, { block: opts.blockTheme })
+          ? await themeForImage(samplePath!, { block: opts.blockTheme })
           : undefined;
     const input: PayloadInput = {
       config,
-      videoUrl: source.kind === "image" ? undefined : urls.videoUrl,
+      videoUrl: source?.kind === "image" ? undefined : urls.videoUrl,
       posterUrl: urls.posterUrl,
       webUrl: urls.webUrl,
       theme: theme?.theme,
     };
     // Animated GIFs use the poster slot as an <img> so they animate on their own.
-    if (source.kind === "image") {
+    if (source?.kind === "image") {
       input.posterUrl = urls.videoUrl;
       input.videoUrl = undefined;
     }
@@ -953,6 +955,31 @@ export async function startServe(opts: ServeOptions): Promise<void> {
         }
         const config = currentConfig();
         saveConfig({ ...config, source: undefined, sourceKind: undefined, projectId: undefined });
+        // A reset leaves no media to paint, so the stage stays down. Re-inject
+        // an empty payload so the frosted-glass idle layer takes over instead
+        // of the UI snapping back to opaque.
+        const empty: LiveWallConfig = { ...currentConfig(), source: undefined, projectId: undefined };
+        const built = await buildFor(empty).catch(() => undefined);
+        if (built) {
+          for (const [, session] of held) {
+            try {
+              if (session.themeScriptId) {
+                await session.conn
+                  .send("Page.removeScriptToEvaluateOnNewDocument", { identifier: session.themeScriptId })
+                  .catch(() => {});
+              }
+              session.themeScriptId = await session.conn
+                .send("Page.addScriptToEvaluateOnNewDocument", { source: built.payload.script })
+                .then((r: any) => r.identifier);
+              await session.conn.send("Runtime.evaluate", {
+                expression: built.payload.script,
+                returnByValue: true,
+              });
+            } catch {
+              /* next poll reattaches */
+            }
+          }
+        }
         return sendJson(res, 200, { ok: true });
       }
 

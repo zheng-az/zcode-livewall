@@ -10,7 +10,7 @@
  * config change and on every renderer reload without stacking elements.
  */
 
-import { buildVariableOverrides, buildTransparencyOverrides } from "./tokens.js";
+import { buildVariableOverrides, buildTransparencyOverrides, buildFrostOverrides } from "./tokens.js";
 import type { LiveWallConfig } from "./config.js";
 import type { Theme } from "@material/material-color-utilities";
 
@@ -47,7 +47,9 @@ html, body { background: transparent !important; }
   z-index: -2147483646;
   overflow: hidden;
   pointer-events: none;
-  background: #0b0b10;
+  /* Near-black with a little transparency: with the frost idle layer on top
+     the window reads as a frosted pane; with a wallpaper the media covers it. */
+  background: rgba(11, 11, 16, 0.82);
 }
 #${MARKER}-video, #${MARKER}-poster, #${MARKER}-web {
   position: absolute;
@@ -113,7 +115,50 @@ html, body { background: transparent !important; }
   inset: 0;
   background: rgb(0 0 0 / var(--zcode-livewall-dim, ${config.dim / 100}));
   pointer-events: none;
-}}`;
+}
+/* Frosted idle layer. Shown whenever nothing is painted on the stage (no
+   source configured, or a video still buffering its first frame): a soft
+   animated tint that reads as frosted glass behind the translucent UI. It is
+   a stage layer, not a window effect — the renderer cannot blur the desktop
+   behind the window, but a tinted sheet under see-through surfaces looks the
+   part and costs nothing. */
+#${MARKER}-frost {
+  position: absolute;
+  inset: 0;
+  display: none;
+  background:
+    radial-gradient(120% 90% at 20% 10%, rgba(120,140,255,.16), transparent 60%),
+    radial-gradient(110% 100% at 85% 20%, rgba(255,120,190,.12), transparent 55%),
+    radial-gradient(130% 110% at 50% 95%, rgba(80,220,255,.10), transparent 60%),
+    linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03));
+  animation: ${MARKER}-frost-drift 26s ease-in-out infinite alternate;
+}
+#${MARKER}-frost::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.05) 45%, transparent 60%);
+  animation: ${MARKER}-frost-sheen 14s linear infinite;
+}
+@keyframes ${MARKER}-frost-drift {
+  from { transform: scale(1.02) translate(0, 0); }
+  to   { transform: scale(1.1) translate(-2.5%, 1.8%); }
+}
+@keyframes ${MARKER}-frost-sheen {
+  from { transform: translateX(-70%); }
+  to   { transform: translateX(70%); }
+}
+/* Show the frost only when the stage is up but has nothing real to paint:
+   no active media (data-ready="0") or a video still waiting for its first
+   frame (vready not yet "1"). A live wallpaper always outranks it. */
+#${MARKER}-stage[data-ready="0"]:not([data-hidden="1"]) #${MARKER}-frost,
+#${MARKER}-stage[data-video="1"]:not([data-vready="1"]):not([data-hidden="1"]) #${MARKER}-frost {
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  #${MARKER}-frost { animation: none; }
+  #${MARKER}-frost::after { display: none; }
+}`;
 }
 
 export function buildPayload(input: PayloadInput): BuiltPayload {
@@ -131,6 +176,11 @@ export function buildPayload(input: PayloadInput): BuiltPayload {
     } else if (config.wallpaperVisible) {
       parts.push(buildTransparencyOverrides({ dim: config.dim }));
     }
+  } else {
+    // No sampled colors yet: cold start, a buffering video, or no wallpaper
+    // at all. Ship the frosted-glass token set so the UI is translucent from
+    // the first paint instead of flashing opaque.
+    parts.push(buildFrostOverrides());
   }
 
   const css = parts.join("\n");
@@ -143,7 +193,9 @@ export function buildBootstrapScript(input: PayloadInput, css: string): string {
   const showVideo = Boolean(videoUrl) && config.wallpaperVisible;
   const showWeb = Boolean(webUrl) && config.wallpaperVisible;
   const showPoster = Boolean(posterUrl) && config.wallpaperVisible;
-  const visible = config.wallpaperVisible && Boolean(videoUrl || webUrl || posterUrl);
+  // The stage must stay up even with no media: it carries the frosted idle
+  // layer shown when nothing is playing (no source, or a buffering video).
+  const visible = config.wallpaperVisible;
 
   return `(function boot(){
   // addScriptToEvaluateOnNewDocument fires before the document has a root
@@ -201,6 +253,17 @@ export function buildBootstrapScript(input: PayloadInput, css: string): string {
   // Marks that a video layer is the active frame owner; the poster fade-out
   // rule keys off this so it can never hide an image wallpaper.
   stage.dataset.video = SHOW_VIDEO ? '1' : '0';
+  // Ready = the stage has real pixels to paint (web page, poster image, or a
+  // playing video). It gates the frosted idle layer underneath.
+  stage.dataset.ready = (SHOW_WEB || SHOW_POSTER) ? '1' : '0';
+
+  // --- frosted idle layer --------------------------------------------------
+  var frost = document.getElementById(MARKER + '-frost');
+  if (!frost) {
+    frost = document.createElement('div');
+    frost.id = MARKER + '-frost';
+    stage.appendChild(frost);
+  }
 
   // --- blurred backdrop for letterboxed framing ----------------------------
   var backdrop = document.getElementById(MARKER + '-backdrop');
@@ -271,7 +334,7 @@ export function buildBootstrapScript(input: PayloadInput, css: string): string {
       // poster in DOM order, so the poster shows through until this fires.
       video.addEventListener('playing', function () {
         var st = document.getElementById(STAGE);
-        if (st) st.dataset.vready = '1';
+        if (st) { st.dataset.vready = '1'; st.dataset.ready = '1'; }
       });
     }
     if (video.getAttribute('src') !== VIDEO_URL) {
@@ -285,7 +348,12 @@ export function buildBootstrapScript(input: PayloadInput, css: string): string {
       // A new stream means no first frame yet — fall back to the poster and
       // wait for the next 'playing' event before treating it as ready.
       var st0 = document.getElementById(STAGE);
-      if (st0) st0.dataset.vready = '';
+      if (st0) {
+        st0.dataset.vready = '';
+        // With a poster the stage still has pixels during the buffer; without
+        // one the frosted idle layer stays up until 'playing' fires.
+        st0.dataset.ready = SHOW_POSTER ? '1' : '0';
+      }
       video.src = VIDEO_URL;
       video.load();
     } else if (video.videoWidth && video.videoHeight && state.applyMediaSizing) {
@@ -330,7 +398,6 @@ export function buildBootstrapScript(input: PayloadInput, css: string): string {
     var stClear = document.getElementById(STAGE);
     if (stClear) stClear.dataset.vready = '';
   }
-
   // --- web (HTML) project layer -------------------------------------------
   var web = document.getElementById(MARKER + '-web');
   if (SHOW_WEB) {
@@ -438,6 +505,7 @@ export function buildResetScript(): string {
   return `(function(){
   document.getElementById(${JSON.stringify(MARKER)} + '-style')?.remove();
   document.getElementById(${JSON.stringify(MARKER)} + '-stage')?.remove();
+  document.getElementById(${JSON.stringify(MARKER)} + '-frost')?.remove();
   try {
     localStorage.removeItem(${JSON.stringify(MARKER)} + ':css');
     localStorage.removeItem(${JSON.stringify(MARKER)} + ':meta');

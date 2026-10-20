@@ -4833,6 +4833,40 @@ async function grabPosterJpeg(ffmpegPath, mediaPath, at, maxWidth = 1920, qualit
     }
   }
 }
+async function grabFramesRaw(ffmpegPath, mediaPath, points, width = 96, height = 54) {
+  const tmp = path3.join(os2.tmpdir(), `zcode-livewall-th-${process.pid}-${Math.random().toString(36).slice(2)}.raw`);
+  const frameBytes = width * height * 3;
+  const frames = [];
+  try {
+    await execFileAsync(ffmpegPath, [
+      "-v",
+      "error",
+      "-i",
+      mediaPath,
+      "-vf",
+      `scale=${width}:${height}`,
+      "-frames:v",
+      String(points.length),
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgb24",
+      tmp,
+      "-y"
+    ], { timeout: 3e4, windowsHide: true });
+    const buf = fs3.readFileSync(tmp);
+    for (let off = 0; off + frameBytes <= buf.length; off += frameBytes) {
+      frames.push(buf.subarray(off, off + frameBytes));
+    }
+  } catch {
+  } finally {
+    try {
+      fs3.rmSync(tmp, { force: true });
+    } catch {
+    }
+  }
+  return frames;
+}
 function paletteFromRaw(raw) {
   const pixels = [];
   for (let i = 0; i + 2 < raw.length; i += 3) {
@@ -4848,13 +4882,13 @@ async function themeFromVideo(mediaPath) {
     return void 0;
   const duration = await probeDuration(ff.ffprobePath, mediaPath);
   const points = duration ? [0.12, 0.3, 0.5, 0.7, 0.88].map((f) => Math.max(0.5, duration * f)) : [1, 3, 6, 10];
+  const posterAt = points[Math.floor(points.length / 2)] ?? 1;
+  const [frames, posterJpeg] = await Promise.all([
+    grabFramesRaw(ff.path, mediaPath, points),
+    grabPosterJpeg(ff.path, mediaPath, posterAt)
+  ]);
   const scores = /* @__PURE__ */ new Map();
-  const frames = [];
-  for (const at of points) {
-    const raw = await grabFrameRaw(ff.path, mediaPath, at);
-    if (!raw)
-      continue;
-    frames.push(raw);
+  for (const raw of frames) {
     const ranked = paletteFromRaw(raw);
     ranked.slice(0, 6).forEach((argb, rank) => {
       scores.set(argb, (scores.get(argb) ?? 0) + (6 - rank));
@@ -4864,8 +4898,6 @@ async function themeFromVideo(mediaPath) {
   if (best === void 0) {
     best = argbFromRgb(103, 80, 164);
   }
-  const posterAt = points[Math.floor(points.length / 2)] ?? 1;
-  const posterJpeg = await grabPosterJpeg(ff.path, mediaPath, posterAt);
   return {
     sourceArgb: best,
     theme: themeFromSourceColor(best),
@@ -4914,6 +4946,33 @@ function buildVariableOverrides(theme, opts) {
 function buildTransparencyOverrides(opts) {
   return `:root,:host,.theme-zai-light{${transparencyRows("light", opts).join("")}}
 .dark,.theme-zai-dark{${transparencyRows("dark", opts).join("")}}`;
+}
+function buildFrostOverrides() {
+  return `:root,:host,.theme-zai-light{${frostRows("light").join("")}}
+.dark,.theme-zai-dark{${frostRows("dark").join("")}}`;
+}
+var LIGHT_FROST_SCRIM = "252,252,255";
+var DARK_FROST_SCRIM = "16,16,22";
+var FROST_BASE_ALPHA = 0.55;
+var FROST_PANEL_ALPHA = 0.45;
+var FROST_INPUT_ALPHA = 0.38;
+var FROST_POPOVER_ALPHA = 0.8;
+function frostRows(mode) {
+  const rgb = mode === "light" ? LIGHT_FROST_SCRIM : DARK_FROST_SCRIM;
+  return [
+    `--color-background:transparent;`,
+    `--color-background-alt:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-background-win-alt:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-panel:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-sidebar:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-surface:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-surface-hover:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-card:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-card-selected:rgba(${rgb},${FROST_BASE_ALPHA + 0.15});`,
+    `--color-popover:rgba(${rgb},${FROST_POPOVER_ALPHA});`,
+    `--color-input:rgba(${rgb},${FROST_INPUT_ALPHA});`,
+    `--color-input-focused:rgba(${rgb},${FROST_INPUT_ALPHA + 0.2});`
+  ];
 }
 var LIGHT_SCRIM = "255,255,255";
 var DARK_SCRIM = "18,18,22";
@@ -4998,7 +5057,9 @@ html, body { background: transparent !important; }
   z-index: -2147483646;
   overflow: hidden;
   pointer-events: none;
-  background: #0b0b10;
+  /* Near-black with a little transparency: with the frost idle layer on top
+     the window reads as a frosted pane; with a wallpaper the media covers it. */
+  background: rgba(11, 11, 16, 0.82);
 }
 #${MARKER}-video, #${MARKER}-poster, #${MARKER}-web {
   position: absolute;
@@ -5064,6 +5125,49 @@ html, body { background: transparent !important; }
   inset: 0;
   background: rgb(0 0 0 / var(--zcode-livewall-dim, ${config.dim / 100}));
   pointer-events: none;
+}
+/* Frosted idle layer. Shown whenever nothing is painted on the stage (no
+   source configured, or a video still buffering its first frame): a soft
+   animated tint that reads as frosted glass behind the translucent UI. It is
+   a stage layer, not a window effect \u2014 the renderer cannot blur the desktop
+   behind the window, but a tinted sheet under see-through surfaces looks the
+   part and costs nothing. */
+#${MARKER}-frost {
+  position: absolute;
+  inset: 0;
+  display: none;
+  background:
+    radial-gradient(120% 90% at 20% 10%, rgba(120,140,255,.16), transparent 60%),
+    radial-gradient(110% 100% at 85% 20%, rgba(255,120,190,.12), transparent 55%),
+    radial-gradient(130% 110% at 50% 95%, rgba(80,220,255,.10), transparent 60%),
+    linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03));
+  animation: ${MARKER}-frost-drift 26s ease-in-out infinite alternate;
+}
+#${MARKER}-frost::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.05) 45%, transparent 60%);
+  animation: ${MARKER}-frost-sheen 14s linear infinite;
+}
+@keyframes ${MARKER}-frost-drift {
+  from { transform: scale(1.02) translate(0, 0); }
+  to   { transform: scale(1.1) translate(-2.5%, 1.8%); }
+}
+@keyframes ${MARKER}-frost-sheen {
+  from { transform: translateX(-70%); }
+  to   { transform: translateX(70%); }
+}
+/* Show the frost only when the stage is up but has nothing real to paint:
+   no active media (data-ready="0") or a video still waiting for its first
+   frame (vready not yet "1"). A live wallpaper always outranks it. */
+#${MARKER}-stage[data-ready="0"]:not([data-hidden="1"]) #${MARKER}-frost,
+#${MARKER}-stage[data-video="1"]:not([data-vready="1"]):not([data-hidden="1"]) #${MARKER}-frost {
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  #${MARKER}-frost { animation: none; }
+  #${MARKER}-frost::after { display: none; }
 }`;
 }
 function buildPayload(input) {
@@ -5078,6 +5182,8 @@ function buildPayload(input) {
     } else if (config.wallpaperVisible) {
       parts.push(buildTransparencyOverrides({ dim: config.dim }));
     }
+  } else {
+    parts.push(buildFrostOverrides());
   }
   const css = parts.join("\n");
   return { css, script: buildBootstrapScript(input, css) };
@@ -5087,7 +5193,7 @@ function buildBootstrapScript(input, css) {
   const showVideo = Boolean(videoUrl) && config.wallpaperVisible;
   const showWeb = Boolean(webUrl) && config.wallpaperVisible;
   const showPoster = Boolean(posterUrl) && config.wallpaperVisible;
-  const visible = config.wallpaperVisible && Boolean(videoUrl || webUrl || posterUrl);
+  const visible = config.wallpaperVisible;
   return `(function boot(){
   // addScriptToEvaluateOnNewDocument fires before the document has a root
   // element; appending then throws and the layer never installs.
@@ -5144,6 +5250,17 @@ function buildBootstrapScript(input, css) {
   // Marks that a video layer is the active frame owner; the poster fade-out
   // rule keys off this so it can never hide an image wallpaper.
   stage.dataset.video = SHOW_VIDEO ? '1' : '0';
+  // Ready = the stage has real pixels to paint (web page, poster image, or a
+  // playing video). It gates the frosted idle layer underneath.
+  stage.dataset.ready = (SHOW_WEB || SHOW_POSTER) ? '1' : '0';
+
+  // --- frosted idle layer --------------------------------------------------
+  var frost = document.getElementById(MARKER + '-frost');
+  if (!frost) {
+    frost = document.createElement('div');
+    frost.id = MARKER + '-frost';
+    stage.appendChild(frost);
+  }
 
   // --- blurred backdrop for letterboxed framing ----------------------------
   var backdrop = document.getElementById(MARKER + '-backdrop');
@@ -5214,7 +5331,7 @@ function buildBootstrapScript(input, css) {
       // poster in DOM order, so the poster shows through until this fires.
       video.addEventListener('playing', function () {
         var st = document.getElementById(STAGE);
-        if (st) st.dataset.vready = '1';
+        if (st) { st.dataset.vready = '1'; st.dataset.ready = '1'; }
       });
     }
     if (video.getAttribute('src') !== VIDEO_URL) {
@@ -5228,7 +5345,12 @@ function buildBootstrapScript(input, css) {
       // A new stream means no first frame yet \u2014 fall back to the poster and
       // wait for the next 'playing' event before treating it as ready.
       var st0 = document.getElementById(STAGE);
-      if (st0) st0.dataset.vready = '';
+      if (st0) {
+        st0.dataset.vready = '';
+        // With a poster the stage still has pixels during the buffer; without
+        // one the frosted idle layer stays up until 'playing' fires.
+        st0.dataset.ready = SHOW_POSTER ? '1' : '0';
+      }
       video.src = VIDEO_URL;
       video.load();
     } else if (video.videoWidth && video.videoHeight && state.applyMediaSizing) {
@@ -5273,7 +5395,6 @@ function buildBootstrapScript(input, css) {
     var stClear = document.getElementById(STAGE);
     if (stClear) stClear.dataset.vready = '';
   }
-
   // --- web (HTML) project layer -------------------------------------------
   var web = document.getElementById(MARKER + '-web');
   if (SHOW_WEB) {
@@ -5377,6 +5498,7 @@ function buildResetScript() {
   return `(function(){
   document.getElementById(${JSON.stringify(MARKER)} + '-style')?.remove();
   document.getElementById(${JSON.stringify(MARKER)} + '-stage')?.remove();
+  document.getElementById(${JSON.stringify(MARKER)} + '-frost')?.remove();
   try {
     localStorage.removeItem(${JSON.stringify(MARKER)} + ':css');
     localStorage.removeItem(${JSON.stringify(MARKER)} + ':meta');
@@ -6419,7 +6541,26 @@ var MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
 var MAX_BODY = Math.ceil(MAX_UPLOAD_BYTES * 1.4);
 var runtimeState = { cdpReachable: false, rendererCount: 0, zcodeRunning: false };
 var nextProcessProbe = 0;
-var cachedSource;
+var THEME_CACHE_LIMIT = 12;
+var themeCache = /* @__PURE__ */ new Map();
+function themeCacheGet(sourcePath, mtimeMs) {
+  const hit = themeCache.get(sourcePath);
+  if (!hit || hit.mtimeMs !== mtimeMs)
+    return void 0;
+  themeCache.delete(sourcePath);
+  themeCache.set(sourcePath, hit);
+  return hit;
+}
+function themeCachePut(sourcePath, mtimeMs, theme) {
+  themeCache.delete(sourcePath);
+  themeCache.set(sourcePath, { path: sourcePath, mtimeMs, theme });
+  while (themeCache.size > THEME_CACHE_LIMIT) {
+    const oldest = themeCache.keys().next().value;
+    if (oldest === void 0)
+      break;
+    themeCache.delete(oldest);
+  }
+}
 var themeJobs = /* @__PURE__ */ new Map();
 var THEME_RETRY_COOLDOWN_MS = 5 * 60 * 1e3;
 var themeFailedAt = /* @__PURE__ */ new Map();
@@ -6457,9 +6598,9 @@ function themeFor(sourcePath, opts = {}) {
   } catch {
     return Promise.resolve(void 0);
   }
-  const cached = cachedSource?.path === sourcePath && cachedSource.mtimeMs === mtimeMs;
-  if (cached && (cachedSource.theme || opts.block)) {
-    return Promise.resolve(cachedSource.theme);
+  const cached = themeCacheGet(sourcePath, mtimeMs);
+  if (cached && (cached.theme || opts.block)) {
+    return Promise.resolve(cached.theme);
   }
   if (!/\.(mp4|webm|mov|m4v|mkv)$/i.test(sourcePath))
     return Promise.resolve(void 0);
@@ -6471,11 +6612,11 @@ function themeFor(sourcePath, opts = {}) {
   let job = themeJobs.get(key);
   if (!job) {
     job = themeFromVideo(sourcePath).then((theme) => {
-      cachedSource = { path: sourcePath, mtimeMs, theme };
+      themeCachePut(sourcePath, mtimeMs, theme);
       themeFailedAt.delete(key);
       return theme;
     }).catch(() => {
-      cachedSource = { path: sourcePath, mtimeMs, theme: void 0 };
+      themeCachePut(sourcePath, mtimeMs, void 0);
       themeFailedAt.set(key, Date.now());
       return void 0;
     }).finally(() => {
@@ -6483,7 +6624,7 @@ function themeFor(sourcePath, opts = {}) {
     });
     themeJobs.set(key, job);
   }
-  return opts.block ? job : cached ? Promise.resolve(cachedSource.theme) : Promise.resolve(void 0);
+  return opts.block ? job : cached ? Promise.resolve(cached.theme) : Promise.resolve(void 0);
 }
 function themeForImage(sourcePath, opts = {}) {
   let mtimeMs = 0;
@@ -6492,9 +6633,9 @@ function themeForImage(sourcePath, opts = {}) {
   } catch {
     return Promise.resolve(void 0);
   }
-  const cached = cachedSource?.path === sourcePath && cachedSource.mtimeMs === mtimeMs;
-  if (cached && (cachedSource.theme || opts.block)) {
-    return Promise.resolve(cachedSource.theme);
+  const cached = themeCacheGet(sourcePath, mtimeMs);
+  if (cached && (cached.theme || opts.block)) {
+    return Promise.resolve(cached.theme);
   }
   const key = `img:${sourcePath}:${mtimeMs}`;
   const failure = themeFailedAt.get(key);
@@ -6504,11 +6645,11 @@ function themeForImage(sourcePath, opts = {}) {
   let job = themeJobs.get(key);
   if (!job) {
     job = themeFromImage(sourcePath).then((theme) => {
-      cachedSource = { path: sourcePath, mtimeMs, theme };
+      themeCachePut(sourcePath, mtimeMs, theme);
       themeFailedAt.delete(key);
       return theme;
     }).catch(() => {
-      cachedSource = { path: sourcePath, mtimeMs, theme: void 0 };
+      themeCachePut(sourcePath, mtimeMs, void 0);
       themeFailedAt.set(key, Date.now());
       return void 0;
     }).finally(() => {
@@ -6516,7 +6657,7 @@ function themeForImage(sourcePath, opts = {}) {
     });
     themeJobs.set(key, job);
   }
-  return opts.block ? job : cached ? Promise.resolve(cachedSource.theme) : Promise.resolve(void 0);
+  return opts.block ? job : cached ? Promise.resolve(cached.theme) : Promise.resolve(void 0);
 }
 function isVideo(p) {
   return /\.(mp4|webm|mov|m4v|mkv)$/i.test(p);
@@ -6615,19 +6756,17 @@ async function startServe(opts) {
   }
   async function buildFor(config, opts2 = {}) {
     const source = resolveSource(config);
-    if (!source)
-      return void 0;
-    const urls = await mediaUrls(config, source);
-    const samplePath = source.originalPath ?? source.path;
-    const theme = source.kind === "video" ? await themeFor(samplePath, { block: opts2.blockTheme }) : source.kind === "image" ? await themeForImage(samplePath, { block: opts2.blockTheme }) : void 0;
+    const urls = source ? await mediaUrls(config, source) : {};
+    const samplePath = source?.originalPath ?? source?.path;
+    const theme = !source ? void 0 : source.kind === "video" ? await themeFor(samplePath, { block: opts2.blockTheme }) : source.kind === "image" ? await themeForImage(samplePath, { block: opts2.blockTheme }) : void 0;
     const input = {
       config,
-      videoUrl: source.kind === "image" ? void 0 : urls.videoUrl,
+      videoUrl: source?.kind === "image" ? void 0 : urls.videoUrl,
       posterUrl: urls.posterUrl,
       webUrl: urls.webUrl,
       theme: theme?.theme
     };
-    if (source.kind === "image") {
+    if (source?.kind === "image") {
       input.posterUrl = urls.videoUrl;
       input.videoUrl = void 0;
     }
@@ -7096,6 +7235,24 @@ async function startServe(opts) {
         }
         const config = currentConfig();
         saveConfig({ ...config, source: void 0, sourceKind: void 0, projectId: void 0 });
+        const empty = { ...currentConfig(), source: void 0, projectId: void 0 };
+        const built = await buildFor(empty).catch(() => void 0);
+        if (built) {
+          for (const [, session] of held) {
+            try {
+              if (session.themeScriptId) {
+                await session.conn.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: session.themeScriptId }).catch(() => {
+                });
+              }
+              session.themeScriptId = await session.conn.send("Page.addScriptToEvaluateOnNewDocument", { source: built.payload.script }).then((r) => r.identifier);
+              await session.conn.send("Runtime.evaluate", {
+                expression: built.payload.script,
+                returnByValue: true
+              });
+            } catch {
+            }
+          }
+        }
         return sendJson(res, 200, { ok: true });
       }
       if (req.method === "GET" && url.pathname === "/api/status") {

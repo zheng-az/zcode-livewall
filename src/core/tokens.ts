@@ -16,16 +16,56 @@ export interface ThemeOptions {
   wallpaperVisible: boolean;
 }
 
+/** Alpha-tuning knobs shared by the transparency and frost blocks. */
+export const FROST_BACKDROP_FILTER =
+  "blur(28px) saturate(1.35)";
+
 const LIGHT_SURFACE_TONES = { lowest: 100, low: 96, container: 94, high: 92, highest: 90 };
 const DARK_SURFACE_TONES = { lowest: 4, low: 10, container: 12, high: 17, highest: 22 };
 
 export function buildVariableOverrides(theme: Theme, opts: ThemeOptions): string {
-  return `:root,:host{${tokenRows(theme, "light", opts).join("")}}\n.dark{${tokenRows(theme, "dark", opts).join("")}}`;
+  return `:root,:host,.theme-zai-light{${tokenRows(theme, "light", opts).join("")}}\n.dark,.theme-zai-dark{${tokenRows(theme, "dark", opts).join("")}}`;
 }
 
 /** Transparency-only overrides when Monet is off but the wallpaper is shown. */
 export function buildTransparencyOverrides(opts: { dim: number }): string {
-  return `:root,:host{${transparencyRows("light", opts).join("")}}\n.dark{${transparencyRows("dark", opts).join("")}}`;
+  return `:root,:host,.theme-zai-light{${transparencyRows("light", opts).join("")}}\n.dark,.theme-zai-dark{${transparencyRows("dark", opts).join("")}}`;
+}
+
+/**
+ * Frosted-glass overrides for the moments when there is no wallpaper to look
+ * at: no source configured, the stage hidden, or a video still buffering its
+ * first frame. The UI surfaces go translucent and the renderer blurs whatever
+ * is behind the window, so the app reads as a frosted pane instead of a solid
+ * slab. Colors stay ZCode's own — only alpha and a backdrop filter change.
+ */
+export function buildFrostOverrides(): string {
+  return `:root,:host,.theme-zai-light{${frostRows("light").join("")}}\n.dark,.theme-zai-dark{${frostRows("dark").join("")}}`;
+}
+
+const LIGHT_FROST_SCRIM = "252,252,255";
+const DARK_FROST_SCRIM = "16,16,22";
+const FROST_BASE_ALPHA = 0.55;
+const FROST_PANEL_ALPHA = 0.45;
+const FROST_INPUT_ALPHA = 0.38;
+const FROST_POPOVER_ALPHA = 0.8;
+
+function frostRows(mode: "light" | "dark"): string[] {
+  const rgb = mode === "light" ? LIGHT_FROST_SCRIM : DARK_FROST_SCRIM;
+  return [
+    `--color-background:transparent;`,
+    `--color-background-alt:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-background-win-alt:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-panel:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-sidebar:rgba(${rgb},${FROST_PANEL_ALPHA});`,
+    `--color-surface:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-surface-hover:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-card:rgba(${rgb},${FROST_BASE_ALPHA});`,
+    `--color-card-selected:rgba(${rgb},${FROST_BASE_ALPHA + 0.15});`,
+    `--color-popover:rgba(${rgb},${FROST_POPOVER_ALPHA});`,
+    `--color-input:rgba(${rgb},${FROST_INPUT_ALPHA});`,
+    `--color-input-focused:rgba(${rgb},${FROST_INPUT_ALPHA + 0.2});`,
+  ];
 }
 
 const LIGHT_SCRIM = "255,255,255";
