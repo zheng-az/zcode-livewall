@@ -5182,7 +5182,7 @@ function buildPayload(input) {
     } else if (config.wallpaperVisible) {
       parts.push(buildTransparencyOverrides({ dim: config.dim }));
     }
-  } else {
+  } else if (!input.videoUrl && !input.posterUrl && !input.webUrl) {
     parts.push(buildFrostOverrides());
   }
   const css = parts.join("\n");
@@ -5313,8 +5313,13 @@ function buildBootstrapScript(input, css) {
   }
 
   // --- video layer ---------------------------------------------------------
+  // Two stacked <video> elements with a crossfade on switch. Swapping src on
+  // one element blanks the frame the instant src changes, which reads as a
+  // flash before the new stream decodes; playing the new one on top and only
+  // removing the old after the fade keeps a continuous picture.
   var video = document.getElementById(MARKER + '-video');
   if (SHOW_VIDEO) {
+    var sameStream = video && video.getAttribute('src') === VIDEO_URL;
     if (!video) {
       video = document.createElement('video');
       video.id = MARKER + '-video';
@@ -5334,27 +5339,57 @@ function buildBootstrapScript(input, css) {
         if (st) { st.dataset.vready = '1'; st.dataset.ready = '1'; }
       });
     }
-    if (video.getAttribute('src') !== VIDEO_URL) {
-      // Same as the poster: size the box once metadata reveals the dimensions.
-      if (state.metaHooked !== video) {
-        state.metaHooked = video;
-        video.addEventListener('loadedmetadata', function () {
-          if (state.applyMediaSizing) state.applyMediaSizing();
-        });
+    if (sameStream) {
+      if (video.videoWidth && video.videoHeight && state.applyMediaSizing) {
+        state.applyMediaSizing();
       }
-      // A new stream means no first frame yet \u2014 fall back to the poster and
-      // wait for the next 'playing' event before treating it as ready.
-      var st0 = document.getElementById(STAGE);
-      if (st0) {
-        st0.dataset.vready = '';
-        // With a poster the stage still has pixels during the buffer; without
-        // one the frosted idle layer stays up until 'playing' fires.
-        st0.dataset.ready = SHOW_POSTER ? '1' : '0';
-      }
-      video.src = VIDEO_URL;
-      video.load();
-    } else if (video.videoWidth && video.videoHeight && state.applyMediaSizing) {
-      state.applyMediaSizing();
+    } else {
+      var old = video;
+      var fresh = document.createElement('video');
+      fresh.id = MARKER + '-video';
+      fresh.muted = true;
+      fresh.loop = true;
+      fresh.autoplay = true;
+      fresh.playsInline = true;
+      fresh.preload = 'auto';
+      fresh.disablePictureInPicture = true;
+      fresh.setAttribute('muted', '');
+      fresh.setAttribute('playsinline', '');
+      fresh.style.opacity = '0';
+      fresh.style.transition = 'opacity .45s ease';
+      stage.appendChild(fresh);
+      fresh.addEventListener('loadedmetadata', function () {
+        if (state.applyMediaSizing) state.applyMediaSizing();
+      });
+      fresh.addEventListener('playing', function () {
+        var st = document.getElementById(STAGE);
+        if (st) { st.dataset.vready = '1'; st.dataset.ready = '1'; }
+        // First frame is on screen: fade the new stream in, then retire the
+        // old element so only one decoder keeps running.
+        fresh.style.opacity = '1';
+        var victim = old;
+        setTimeout(function () {
+          try {
+            victim.pause();
+            victim.removeAttribute('src');
+            victim.load();
+            victim.remove();
+          } catch (e) {}
+        }, 500);
+      });
+      fresh.src = VIDEO_URL;
+      fresh.load();
+      var pf = fresh.play();
+      if (pf && pf.catch) pf.catch(function () {});
+      // Hand the element id over immediately so every lookup (syncPlayback,
+      // sizing, the panel) sees the incoming stream, never two at once.
+      old.removeAttribute('id');
+      fresh.id = MARKER + '-video';
+      video = fresh;
+      var stx = document.getElementById(STAGE);
+      // No poster flash: keep whatever frame the old stream shows visible by
+      // marking ready already if it was ready.
+      if (stx && old.videoWidth) { stx.dataset.vready = '1'; stx.dataset.ready = '1'; }
     }
     video.playbackRate = SPEED;
     video.style.display = 'block';
