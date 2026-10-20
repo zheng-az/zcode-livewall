@@ -27,45 +27,84 @@ export function buildPanelScript(apiPort: number, token: string): string {
 
   var css = [
     '#zcode-livewall-panel-root, #zcode-livewall-panel-root * { box-sizing: border-box; font-family: system-ui, sans-serif; }',
-    '#zcode-livewall-panel-root { position: fixed; inset: auto; z-index: 2147483647; font-size: 12px; color: #e8e8ea; }',
+    '#zcode-livewall-panel-root { position: fixed; inset: auto; z-index: 2147483647; font-size: 12px; color: #ececf1;',
+      ' text-shadow: 0 1px 2px rgba(0,0,0,.35); }',
+    // Floating action button: a small glass disc.
     '#zlw-fab { position: fixed; right: 60px; bottom: 18px; width: 34px; height: 34px; border-radius: 50%;',
-      ' background: rgba(32,32,38,.78); border: 1px solid rgba(255,255,255,.12); cursor: pointer;',
-      ' display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);',
-      ' box-shadow: 0 2px 12px rgba(0,0,0,.35); user-select: none; font-size: 15px; line-height: 1; }',
-    '#zlw-fab:hover { background: rgba(52,52,60,.85); }',
+      ' background: linear-gradient(135deg, rgba(58,62,88,.55), rgba(28,30,42,.62)); border: 1px solid rgba(255,255,255,.18); cursor: pointer;',
+      ' display: flex; align-items: center; justify-content: center;',
+      ' backdrop-filter: blur(20px) saturate(1.45); -webkit-backdrop-filter: blur(20px) saturate(1.45);',
+      ' box-shadow: 0 2px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.22);',
+      ' user-select: none; font-size: 15px; line-height: 1; transition: box-shadow .2s ease, transform .15s ease; }',
+    '#zlw-fab:hover { box-shadow: 0 4px 22px rgba(122,162,247,.38), inset 0 1px 0 rgba(255,255,255,.26); transform: translateY(-1px); }',
+    '#zlw-fab:active { transform: translateY(0); }',
+    // The panel itself: a frosted pane with a light-catching rim and a slow
+    // sheen drifting across, matching the wallpaper stage's frost layer.
     '#zlw-panel { position: fixed; right: 18px; bottom: 60px; width: 286px; padding: 0 0 10px;',
-      ' background: rgba(24,24,30,.9); border: 1px solid rgba(255,255,255,.12); border-radius: 12px;',
-      ' backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0,0,0,.45); user-select: none; }',
+      ' background: linear-gradient(150deg, rgba(34,37,54,.55) 0%, rgba(22,23,33,.66) 55%, rgba(26,24,38,.6) 100%);',
+      ' border: 1px solid rgba(255,255,255,.16); border-radius: 16px;',
+      ' backdrop-filter: blur(28px) saturate(1.5); -webkit-backdrop-filter: blur(28px) saturate(1.5);',
+      ' box-shadow: 0 12px 40px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.18), inset 0 -1px 0 rgba(255,255,255,.04);',
+      ' user-select: none; overflow: hidden; }',
+    '#zlw-panel::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;',
+      ' background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.07) 50%, transparent 62%);',
+      ' animation: zlw-sheen 12s linear infinite; }',
+    '@keyframes zlw-sheen { from { transform: translateX(-70%); } to { transform: translateX(70%); } }',
     '#zlw-panel[hidden] { display: none; }',
-    '#zlw-head { padding: 9px 12px; font-weight: 600; cursor: move; border-bottom: 1px solid rgba(255,255,255,.1);',
+    '#zlw-head { padding: 10px 12px; font-weight: 600; cursor: move;',
+      ' border-bottom: 1px solid rgba(255,255,255,.12); background: linear-gradient(180deg, rgba(255,255,255,.06), transparent);',
       ' display: flex; justify-content: space-between; align-items: center; }',
-    '#zlw-close { cursor: pointer; opacity: .7; padding: 0 4px; } #zlw-close:hover { opacity: 1; }',
+    '#zlw-close { cursor: pointer; opacity: .7; padding: 0 4px; transition: opacity .15s; } #zlw-close:hover { opacity: 1; }',
     '#zlw-body { padding: 10px 12px 0; max-height: 62vh; overflow-y: auto; }',
+    // Thin translucent scrollbars so the glass look is not broken by chunky bars.
+    '#zlw-body::-webkit-scrollbar, #zlw-projects::-webkit-scrollbar { width: 8px; }',
+    '#zlw-body::-webkit-scrollbar-thumb, #zlw-projects::-webkit-scrollbar-thumb {',
+      ' background: rgba(255,255,255,.16); border-radius: 4px; }',
+    '#zlw-body::-webkit-scrollbar-thumb:hover, #zlw-projects::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.26); }',
+    '#zlw-body::-webkit-scrollbar-track, #zlw-projects::-webkit-scrollbar-track { background: transparent; }',
     '.zlw-row { margin-bottom: 10px; }',
-    '.zlw-row label { display: flex; justify-content: space-between; margin-bottom: 4px; opacity: .85; }',
+    '.zlw-row label { display: flex; justify-content: space-between; margin-bottom: 4px; opacity: .9; }',
+    '.zlw-search { width: 100%; margin-bottom: 5px; padding: 6px 9px; border-radius: 9px; color: inherit; font-size: 12px; outline: none;',
+      ' border: 1px solid rgba(255,255,255,.14); background: rgba(8,10,18,.35);',
+      ' backdrop-filter: blur(8px); box-shadow: inset 0 1px 3px rgba(0,0,0,.25); transition: border-color .15s, box-shadow .15s; }',
+    '.zlw-search:focus { border-color: rgba(122,162,247,.55); box-shadow: inset 0 1px 3px rgba(0,0,0,.25), 0 0 0 3px rgba(122,162,247,.15); }',
+    '.zlw-search::placeholder { color: rgba(232,232,234,.4); }',
     '#zlw-panel input[type=range] { width: 100%; accent-color: #7aa2f7; height: 18px; margin: 0; cursor: pointer; }',
     '.zlw-toggles { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }',
     '.zlw-toggles label { display: flex; align-items: center; gap: 5px; margin: 0; cursor: pointer; }',
+    '.zlw-toggles input[type=checkbox] { accent-color: #7aa2f7; }',
     '.zlw-actions { display: flex; justify-content: center; gap: 8px; }',
+    // Buttons: glass pills with a lit rim; hover adds a soft accent glow.
     '.zlw-btn { display: inline-block; padding: 6px 14px; text-align: center; border-radius: 999px; cursor: pointer;',
-      ' background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14); color: inherit; font-size: 12px; }',
-    '.zlw-btn:hover { background: rgba(255,255,255,.16); }',
-    '#zlw-projects { width: 100%; max-height: 260px; overflow-y: auto; border-radius: 8px;',
-      ' border: 1px solid rgba(255,255,255,.1); background: rgba(0,0,0,.22); }',
+      ' background: linear-gradient(135deg, rgba(255,255,255,.13), rgba(255,255,255,.05));',
+      ' border: 1px solid rgba(255,255,255,.16); color: inherit; font-size: 12px;',
+      ' backdrop-filter: blur(8px); box-shadow: inset 0 1px 0 rgba(255,255,255,.14);',
+      ' transition: background .15s ease, box-shadow .15s ease; }',
+    '.zlw-btn:hover { background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.1));',
+      ' box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 2px 14px rgba(122,162,247,.28); }',
+    '.zlw-btn:active { box-shadow: inset 0 2px 5px rgba(0,0,0,.25); }',
+    // Project list: a glass drawer inside the pane.
+    '#zlw-projects { width: 100%; max-height: 260px; overflow-y: auto; border-radius: 10px;',
+      ' border: 1px solid rgba(255,255,255,.12); background: rgba(8,10,18,.32);',
+      ' backdrop-filter: blur(6px); box-shadow: inset 0 1px 4px rgba(0,0,0,.2); }',
     '.zlw-proj { padding: 6px 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px;',
-      ' border-bottom: 1px solid rgba(255,255,255,.05); }',
-    '.zlw-proj:hover { background: rgba(255,255,255,.09); }',
-    '.zlw-proj[data-active="1"] { background: rgba(122,162,247,.22); }',
+      ' border-bottom: 1px solid rgba(255,255,255,.05); transition: background .12s ease; }',
+    '.zlw-proj:last-child { border-bottom: 0; }',
+    '.zlw-proj:hover { background: rgba(255,255,255,.08); }',
+    '.zlw-proj[data-active="1"] { background: linear-gradient(135deg, rgba(122,162,247,.30), rgba(122,162,247,.12));',
+      ' box-shadow: inset 2px 0 0 rgba(122,162,247,.8); }',
     '.zlw-proj[data-busy="1"] { opacity: .65; cursor: progress; }',
     '.zlw-proj .zlw-meta { opacity: .55; font-size: 10px; white-space: nowrap; }',
-    '#zlw-status { min-height: 14px; padding: 2px 12px 0; opacity: .6; font-size: 11px; }',
+    '#zlw-status { min-height: 14px; padding: 2px 12px 0; opacity: .65; font-size: 11px; }',
     '#zlw-offline { display: flex; flex-direction: column; gap: 6px; align-items: center;',
-      ' padding: 10px 12px; background: rgba(120,53,15,.55); font-size: 11px; line-height: 1.5; text-align: center; }',
+      ' padding: 10px 12px; background: rgba(120,53,15,.42); font-size: 11px; line-height: 1.5; text-align: center;',
+      ' border-bottom: 1px solid rgba(251,191,36,.2); backdrop-filter: blur(8px); }',
     '#zlw-offline[hidden] { display: none; }',
     '#zlw-offline code { background: rgba(0,0,0,.35); padding: 1px 4px; border-radius: 4px; font-size: 10px; user-select: text; }',
     '#zcode-livewall-panel-root[data-offline="1"] #zlw-body { opacity: .45; pointer-events: none; }',
     '#zcode-livewall-panel-root[data-offline="1"] #zlw-status { display: none; }',
-    '#zcode-livewall-panel-root[data-offline="1"] #zlw-fab { border-color: rgba(248,113,113,.7); }'
+    '#zcode-livewall-panel-root[data-offline="1"] #zlw-fab { border-color: rgba(248,113,113,.7); }',
+    '@media (prefers-reduced-motion: reduce) { #zlw-panel::before { animation: none; } }'
   ].join('');
 
   var style = document.createElement('style');
@@ -86,7 +125,7 @@ export function buildPanelScript(apiPort: number, token: string): string {
     '  </div>' +
     '  <div id="zlw-body">' +
     '    <div class="zlw-row"><label><span>壁纸库</span><span id="zlw-count"></span></label>' +
-    '      <input type="search" id="zlw-search" placeholder="搜索标题 / 类型…" style="width:100%;margin-bottom:5px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.25);color:inherit;font-size:12px;outline:none">' +
+    '      <input type="search" id="zlw-search" class="zlw-search" placeholder="搜索标题 / 类型…">' +
     '      <div id="zlw-projects"></div></div>' +
     '    <div class="zlw-row"><label title="背景模糊程度(像素)"><span>背景模糊</span><span><span id="zlw-blur-val">0</span>px</span></label>' +
     '      <input type="range" id="zlw-blur" min="0" max="40" step="1" value="0"></div>' +
