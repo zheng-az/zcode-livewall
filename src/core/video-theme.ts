@@ -173,6 +173,94 @@ export async function grabPosterJpeg(
   }
 }
 
+/**
+ * One ffmpeg pass that decodes several frames and writes each as a small JPEG.
+ * A video switch previously paid five full process spawns (one per sample
+ * point); a single decode sweep turns that into one process and one seek, and
+ * the resulting JPEGs also double as theme input (decoded here, not in Node).
+ */
+async function grabFramesJpeg(
+  ffmpegPath: string,
+  mediaPath: string,
+  points: number[]
+): Promise<string[]> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "zcode-livewall-th-"));
+  const out: string[] = [];
+  // select filter comparing floats: `lt(prev_pts,0)+gte(...)` chains are
+  // fragile; the reliable form is one select expression over timestamps.
+  const expr = points.map((t) => `gte(t,${t.toFixed(3)})`).join("*");
+  const frames = String(points.length);
+  try {
+    await execFileAsync(
+      ffmpegPath,
+      [
+        "-v", "error",
+        "-i", mediaPath,
+        "-vf", `select='${expr}',scale=96:54`,
+        "-frames:v", frames,
+        "-vsync", "vfr",
+        "-q:v", "5",
+        path.join(dir, "%d.jpg"),
+        "-y",
+      ],
+      { timeout: 30000, windowsHide: true }
+    );
+    for (let i = 1; i <= points.length; i++) {
+      const f = path.join(dir, `${i}.jpg`);
+      if (fs.existsSync(f) && fs.statSync(f).size > 0) out.push(f);
+    }
+  } catch {
+    /* caller falls back to the neutral seed */
+  }
+  return out;
+}
+
+/**
+ * One ffmpeg pass that decodes N frames into a single raw RGB file. Each frame
+ * is exactly width*height*3 bytes, so frames are recovered by slicing — no
+ * image decoder needed, and N process spawns collapse into one.
+ */
+async function grabFramesRaw(
+  ffmpegPath: string,
+  mediaPath: string,
+  points: number[],
+  width = 96,
+  height = 54
+): Promise<Buffer[]> {
+  const tmp = path.join(os.tmpdir(), `zcode-livewall-th-${process.pid}-${Math.random().toString(36).slice(2)}.raw`);
+  const frameBytes = width * height * 3;
+  const frames: Buffer[] = [];
+  try {
+    await execFileAsync(
+      ffmpegPath,
+      [
+        "-v", "error",
+        "-i", mediaPath,
+        "-vf", `scale=${width}:${height}`,
+        "-frames:v", String(points.length),
+        "-f", "rawvideo",
+        "-pix_fmt", "rgb24",
+        tmp,
+        "-y",
+      ],
+      { timeout: 30000, windowsHide: true }
+    );
+    const buf = fs.readFileSync(tmp);
+    for (let off = 0; off + frameBytes <= buf.length; off += frameBytes) {
+      frames.push(buf.subarray(off, off + frameBytes));
+    }
+  } catch {
+    /* caller falls back to the neutral seed */
+  } finally {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+  return frames;
+}
+
 function paletteFromRaw(raw: Buffer): number[] {
   const pixels: number[] = [];
   // Stride keeps the quantizer fast while still covering the whole frame.
@@ -184,9 +272,13 @@ function paletteFromRaw(raw: Buffer): number[] {
 }
 
 /**
- * Samples 3-5 evenly spaced frames, scores each palette, and uses the color
- * that ranks best across samples (with a brightness guard so a mostly-black
- * frame cannot win by being the only colorful thing in a fade).
+ * Samples evenly spaced frames in ONE ffmpeg pass, scores each palette, and
+ * uses the color that ranks best across samples (with a brightness guard so a
+ * mostly-black frame cannot win by being the only colorful thing in a fade).
+ *
+ * The poster grab is kicked off in parallel with the frame sweep instead of
+ * queued after it — the poster is on the critical path for the visual switch,
+ * the palette only affects the UI colors.
  */
 export async function themeFromVideo(mediaPath: string): Promise<VideoTheme | undefined> {
   const ff = await findFfmpeg();
@@ -197,12 +289,14 @@ export async function themeFromVideo(mediaPath: string): Promise<VideoTheme | un
     ? [0.12, 0.3, 0.5, 0.7, 0.88].map((f) => Math.max(0.5, duration * f))
     : [1, 3, 6, 10];
 
+  const posterAt = points[Math.floor(points.length / 2)] ?? 1;
+  const [frames, posterJpeg] = await Promise.all([
+    grabFramesRaw(ff.path, mediaPath, points),
+    grabPosterJpeg(ff.path, mediaPath, posterAt),
+  ]);
+
   const scores = new Map<number, number>();
-  const frames: Buffer[] = [];
-  for (const at of points) {
-    const raw = await grabFrameRaw(ff.path, mediaPath, at);
-    if (!raw) continue;
-    frames.push(raw);
+  for (const raw of frames) {
     const ranked = paletteFromRaw(raw);
     ranked.slice(0, 6).forEach((argb, rank) => {
       scores.set(argb, (scores.get(argb) ?? 0) + (6 - rank));
@@ -214,9 +308,6 @@ export async function themeFromVideo(mediaPath: string): Promise<VideoTheme | un
     // No decodable frame: fall back to a neutral MD3 seed.
     best = argbFromRgb(103, 80, 164);
   }
-
-  const posterAt = points[Math.floor(points.length / 2)] ?? 1;
-  const posterJpeg = await grabPosterJpeg(ff.path, mediaPath, posterAt);
 
   return {
     sourceArgb: best,

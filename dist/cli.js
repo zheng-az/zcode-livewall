@@ -4908,12 +4908,12 @@ function round2(v) {
 var LIGHT_SURFACE_TONES = { lowest: 100, low: 96, container: 94, high: 92, highest: 90 };
 var DARK_SURFACE_TONES = { lowest: 4, low: 10, container: 12, high: 17, highest: 22 };
 function buildVariableOverrides(theme, opts) {
-  return `:root,:host{${tokenRows(theme, "light", opts).join("")}}
-.dark{${tokenRows(theme, "dark", opts).join("")}}`;
+  return `:root,:host,.theme-zai-light{${tokenRows(theme, "light", opts).join("")}}
+.dark,.theme-zai-dark{${tokenRows(theme, "dark", opts).join("")}}`;
 }
 function buildTransparencyOverrides(opts) {
-  return `:root,:host{${transparencyRows("light", opts).join("")}}
-.dark{${transparencyRows("dark", opts).join("")}}`;
+  return `:root,:host,.theme-zai-light{${transparencyRows("light", opts).join("")}}
+.dark,.theme-zai-dark{${transparencyRows("dark", opts).join("")}}`;
 }
 var LIGHT_SCRIM = "255,255,255";
 var DARK_SCRIM = "18,18,22";
@@ -5064,7 +5064,7 @@ html, body { background: transparent !important; }
   inset: 0;
   background: rgb(0 0 0 / var(--zcode-livewall-dim, ${config.dim / 100}));
   pointer-events: none;
-}}`;
+}`;
 }
 function buildPayload(input) {
   const { config, theme } = input;

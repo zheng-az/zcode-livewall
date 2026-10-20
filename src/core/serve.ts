@@ -81,12 +81,37 @@ interface RuntimeState {
 let runtimeState: RuntimeState = { cdpReachable: false, rendererCount: 0, zcodeRunning: false };
 let nextProcessProbe = 0;
 
-/** Cached theme + poster, keyed by source path and mtime. */
-let cachedSource:
-  | { path: string; mtimeMs: number; theme?: Awaited<ReturnType<typeof themeFromVideo>> }
-  | undefined;
+/**
+ * Theme + poster cache keyed by source path and mtime. Multi-slot: switching
+ * back and forth between a few wallpapers must not re-run ffmpeg every time,
+ * which is exactly what the old single-slot cache caused.
+ */
+const THEME_CACHE_LIMIT = 12;
+const themeCache = new Map<
+  string,
+  { path: string; mtimeMs: number; theme?: Awaited<ReturnType<typeof themeFromVideo>> }
+>();
 
-/** In-flight theme extractions, so repeated polls share one ffmpeg run. */
+function themeCacheGet(sourcePath: string, mtimeMs: number) {
+  const hit = themeCache.get(sourcePath);
+  if (!hit || hit.mtimeMs !== mtimeMs) return undefined;
+  // Refresh insertion order so Map iteration acts as LRU.
+  themeCache.delete(sourcePath);
+  themeCache.set(sourcePath, hit);
+  return hit;
+}
+
+function themeCachePut(sourcePath: string, mtimeMs: number, theme: Awaited<ReturnType<typeof themeFromVideo>>): void {
+  themeCache.delete(sourcePath);
+  themeCache.set(sourcePath, { path: sourcePath, mtimeMs, theme });
+  while (themeCache.size > THEME_CACHE_LIMIT) {
+    const oldest = themeCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    themeCache.delete(oldest);
+  }
+}
+
+/** In-flight theme extractions, so repeated polls share one job per source. */
 const themeJobs = new Map<string, Promise<Awaited<ReturnType<typeof themeFromVideo>>>>();
 
 /**
@@ -170,9 +195,9 @@ function themeFor(
     return Promise.resolve(undefined);
   }
 
-  const cached = cachedSource?.path === sourcePath && cachedSource.mtimeMs === mtimeMs;
-  if (cached && (cachedSource!.theme || opts.block)) {
-    return Promise.resolve(cachedSource!.theme);
+  const cached = themeCacheGet(sourcePath, mtimeMs);
+  if (cached && (cached.theme || opts.block)) {
+    return Promise.resolve(cached.theme);
   }
   if (!/\.(mp4|webm|mov|m4v|mkv)$/i.test(sourcePath)) return Promise.resolve(undefined);
 
@@ -187,13 +212,13 @@ function themeFor(
   if (!job) {
     job = themeFromVideo(sourcePath)
       .then((theme) => {
-        cachedSource = { path: sourcePath, mtimeMs, theme };
+        themeCachePut(sourcePath, mtimeMs, theme);
         themeFailedAt.delete(key);
         return theme;
       })
       .catch(() => {
         // Remember the failure so a broken file is not re-decoded forever.
-        cachedSource = { path: sourcePath, mtimeMs, theme: undefined };
+        themeCachePut(sourcePath, mtimeMs, undefined);
         themeFailedAt.set(key, Date.now());
         return undefined;
       })
@@ -202,7 +227,7 @@ function themeFor(
       });
     themeJobs.set(key, job);
   }
-  return opts.block ? job : cached ? Promise.resolve(cachedSource!.theme) : Promise.resolve(undefined);
+  return opts.block ? job : cached ? Promise.resolve(cached.theme) : Promise.resolve(undefined);
 }
 
 /**
@@ -221,9 +246,9 @@ function themeForImage(
     return Promise.resolve(undefined);
   }
 
-  const cached = cachedSource?.path === sourcePath && cachedSource.mtimeMs === mtimeMs;
-  if (cached && (cachedSource!.theme || opts.block)) {
-    return Promise.resolve(cachedSource!.theme);
+  const cached = themeCacheGet(sourcePath, mtimeMs);
+  if (cached && (cached.theme || opts.block)) {
+    return Promise.resolve(cached.theme);
   }
 
   const key = `img:${sourcePath}:${mtimeMs}`;
@@ -237,12 +262,12 @@ function themeForImage(
   if (!job) {
     job = themeFromImage(sourcePath)
       .then((theme) => {
-        cachedSource = { path: sourcePath, mtimeMs, theme };
+        themeCachePut(sourcePath, mtimeMs, theme);
         themeFailedAt.delete(key);
         return theme;
       })
       .catch(() => {
-        cachedSource = { path: sourcePath, mtimeMs, theme: undefined };
+        themeCachePut(sourcePath, mtimeMs, undefined);
         themeFailedAt.set(key, Date.now());
         return undefined;
       })
@@ -251,7 +276,7 @@ function themeForImage(
       });
     themeJobs.set(key, job);
   }
-  return opts.block ? job : cached ? Promise.resolve(cachedSource!.theme) : Promise.resolve(undefined);
+  return opts.block ? job : cached ? Promise.resolve(cached.theme) : Promise.resolve(undefined);
 }
 
 function isVideo(p: string): boolean {
