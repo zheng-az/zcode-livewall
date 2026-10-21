@@ -5901,7 +5901,10 @@ function buildPanelScript(apiPort, token) {
     '#zcode-livewall-panel-root[data-offline="1"] #zlw-body { opacity: .45; pointer-events: none; }',
     '#zcode-livewall-panel-root[data-offline="1"] #zlw-status { display: none; }',
     '#zcode-livewall-panel-root[data-offline="1"] #zlw-fab { border-color: rgba(248,113,113,.7); }',
-    '@media (prefers-reduced-motion: reduce) { #zlw-panel::before { animation: none; } }'
+    '@media (prefers-reduced-motion: reduce) { #zlw-panel::before { animation: none; } }',
+    // Crystal gem mark: line-drawn facets over the glass disc.
+    '#zlw-fab svg { width: 18px; height: 18px; display: block;',
+      ' filter: drop-shadow(0 0 4px rgba(140,175,255,.5)) drop-shadow(0 0 10px rgba(180,140,255,.25)); }'
   ].join('');
 
   var style = document.createElement('style');
@@ -5911,8 +5914,27 @@ function buildPanelScript(apiPort, token) {
 
   var root = document.createElement('div');
   root.id = ROOT_ID;
+  // The mark is a line-drawn faceted crystal: an icy-blue-to-violet gradient
+  // stroke keeps it crystalline against the dark glass disc.
   root.innerHTML =
-    '<div id="zlw-fab" title="ZCode LiveWall">\u{1F39E}</div>' +
+    '<div id="zlw-fab" title="ZCode LiveWall">' +
+    '  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '    <defs>' +
+    '      <linearGradient id="zlw-gem-g" x1="4" y1="4" x2="20" y2="21" gradientUnits="userSpaceOnUse">' +
+    '        <stop offset="0" stop-color="#a8d4ff"/>' +
+    '        <stop offset=".5" stop-color="#8fa8ff"/>' +
+    '        <stop offset="1" stop-color="#c48cff"/>' +
+    '      </linearGradient>' +
+    '    </defs>' +
+    '    <g stroke="url(#zlw-gem-g)" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">' +
+    '      <path d="M4.2 9.3 8.6 4.8h6.8l4.4 4.5L12 20.6 4.2 9.3Z"/>' +
+    '      <path d="M4.2 9.3h15.6"/>' +
+    '      <path d="M8.6 4.8l2.2 4.5L12 20.6"/>' +
+    '      <path d="M15.4 4.8l-2.2 4.5L12 20.6"/>' +
+    '      <path d="M8.6 4.8 12 9.3l3.4-4.5"/>' +
+    '    </g>' +
+    '  </svg>' +
+    '</div>' +
     '<div id="zlw-panel" hidden>' +
     '  <div id="zlw-head"><span>ZCode LiveWall</span><span id="zlw-close">\u2715</span></div>' +
     '  <div id="zlw-offline" hidden>' +
