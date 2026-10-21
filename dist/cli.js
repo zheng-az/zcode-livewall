@@ -6418,6 +6418,7 @@ async function isZcodeProcessRunning() {
 // dist/core/launch.js
 import { execFile as execFile4, spawn } from "node:child_process";
 import { promisify as promisify4 } from "node:util";
+import net from "node:net";
 import fs6 from "node:fs";
 import os3 from "node:os";
 import path6 from "node:path";
@@ -6437,9 +6438,36 @@ function findZcodeExecutable() {
     }
   });
 }
-async function launchZcode(port) {
-  if (await discoverCdpPort(port)) {
-    return { started: false, reason: "already-running-with-cdp" };
+function portOccupied(port) {
+  return new Promise((resolve) => {
+    const sock = net.connect({ port, host: "127.0.0.1" });
+    const done = (busy) => {
+      sock.removeAllListeners();
+      sock.destroy();
+      resolve(busy);
+    };
+    sock.setTimeout(400);
+    sock.once("connect", () => done(true));
+    sock.once("timeout", () => done(false));
+    sock.once("error", () => done(false));
+  });
+}
+async function pickCdpPort(preferred = 9222) {
+  const candidates = [];
+  if (preferred > 0)
+    candidates.push(preferred);
+  for (let p = 9222; p <= 9240; p++)
+    if (!candidates.includes(p))
+      candidates.push(p);
+  for (const p of candidates) {
+    if (!await portOccupied(p))
+      return p;
+  }
+  return preferred;
+}
+async function launchZcode(requestedPort) {
+  if (await discoverCdpPort(requestedPort)) {
+    return { started: false, reason: "already-running-with-cdp", port: requestedPort };
   }
   const exe = findZcodeExecutable();
   if (!exe) {
@@ -6448,6 +6476,7 @@ async function launchZcode(port) {
   if (await isZcodeProcessRunning()) {
     return { started: false, reason: "running-without-cdp" };
   }
+  const port = await pickCdpPort(requestedPort);
   const child = spawn(exe, [`--remote-debugging-port=${port}`], {
     detached: true,
     stdio: "ignore",
@@ -6457,7 +6486,7 @@ async function launchZcode(port) {
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 500));
     if (await discoverCdpPort(port))
-      return { started: true };
+      return { started: true, port };
   }
   throw new Error("ZCode started but no CDP endpoint appeared. Quit ZCode completely and try again.");
 }
@@ -7009,7 +7038,8 @@ async function startServe(opts) {
       return;
     }
     lastAutoRestart = now;
-    console.log("serve: ZCode has no CDP port \u2014 restarting it with --remote-debugging-port");
+    const port = await pickCdpPort(fixedCdpPort ?? 9222);
+    console.log(`serve: ZCode has no CDP port \u2014 restarting it with --remote-debugging-port=${port}`);
     await killZcode();
     for (let i = 0; i < 20; i++) {
       await new Promise((r2) => setTimeout(r2, 500));
@@ -7020,7 +7050,7 @@ async function startServe(opts) {
       console.error("serve: ZCode did not exit; auto-restart abandoned for this cooldown");
       return;
     }
-    const r = await launchZcode(fixedCdpPort ?? 9222).catch((err) => {
+    const r = await launchZcode(port).catch((err) => {
       console.error(`serve: auto-restart failed \u2014 ${err.message}`);
       return { started: false };
     });

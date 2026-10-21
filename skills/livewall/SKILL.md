@@ -35,6 +35,17 @@ node dist/cli.js stop                          # 停止
 
 静态图片零解码开销，是最省性能的选择；图片同样会做 Monet 取色。
 
+## 新设备首次启用
+
+- **node 不在 PATH**：MCP 工具由 ZCode 用 `node` 直接拉起，找不到就整组失联。
+  处理：用 `where node` 找任意 Node 20+（含其他软件自带的），显式用它跑
+  `dist\cli.js`；或直接运行插件目录的 `scripts\start-livewall.cmd [壁纸文件] [--dim 35]`，
+  脚本会自动定位 Node、写壁纸配置、带调试端口启动 ZCode 并拉起常驻服务。
+- **9222 被其他程序占用**（Chrome 等也爱用这个端口）：不用手工处理，
+  `launch` / autoRestart 会自动改选 9222–9240 里的空闲端口。
+- 装完插件后**重启一次 ZCode** 即可：MCP 服务器启动时会自动拉起 serve；
+  serve 发现 ZCode 没开 CDP，30 秒后会自动带端口重启它。之后一切自愈。
+
 ## 排障
 
 | 现象 | 原因 | 处理 |
