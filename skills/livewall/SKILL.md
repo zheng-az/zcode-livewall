@@ -21,6 +21,7 @@ description: Set, tune or troubleshoot an animated (video) wallpaper for the ZCo
 ```bash
 node dist/cli.js list                          # 列出可用壁纸
 node dist/cli.js apply <id|标题片段> --dim 35   # 选定壁纸
+node dist/cli.js link [Monitor0]               # 链接 WE 正在显示的壁纸（scene 类显示静态预览）
 node dist/cli.js serve --detach                # 启动注入 + 媒体 + 面板
 node dist/cli.js stop                          # 停止
 ```
@@ -43,6 +44,10 @@ node dist/cli.js stop                          # 停止
   脚本会自动定位 Node、写壁纸配置、带调试端口启动 ZCode 并拉起常驻服务。
 - **9222 被其他程序占用**（Chrome 等也爱用这个端口）：不用手工处理，
   `launch` / autoRestart 会自动改选 9222–9240 里的空闲端口。
+- **没有 Wallpaper Engine**：`list` 返回 0 个项目属预期，不是故障 —— 跳过壁纸库，
+  直接 `apply <本地视频/图片路径>`，或让用户点面板的「视频…/图片…」导入。面板
+  会显示引导空态，功能不受任何影响（Monet 取色、模糊、暗度照常可用）。未设置
+  任何壁纸时全局呈毛玻璃半透明观感，无需额外操作。
 - 装完插件后**重启一次 ZCode** 即可：MCP 服务器启动时会自动拉起 serve；
   serve 发现 ZCode 没开 CDP，30 秒后会自动带端口重启它。之后一切自愈。
 

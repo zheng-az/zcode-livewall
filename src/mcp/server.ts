@@ -157,6 +157,31 @@ server.registerTool(
 );
 
 server.registerTool(
+  "link_wallpaper_engine",
+  {
+    title: "Link the current Wallpaper Engine wallpaper",
+    description:
+      "Adopt the wallpaper Wallpaper Engine is showing right now (read from its own config) as the ZCode animated background. " +
+      "Scene/application types degrade to their preview image since the browser cannot replay scene.pkg.",
+    inputSchema: {
+      monitor: z.string().optional().describe('Monitor name as WE records it, e.g. "Monitor0"; default picks the first one with a wallpaper'),
+    },
+  },
+  async ({ monitor }) => {
+    try {
+      const data = await call("/api/source/current", monitor ? { monitor } : {});
+      return ok(
+        `Linked WE's current wallpaper "${data.title}" on ${data.monitor} to ${data.windows ?? 0} window(s)` +
+          (data.degraded ? " (scene type — showing the static preview image)" : "") +
+          "."
+      );
+    } catch (err) {
+      return fail(err);
+    }
+  }
+);
+
+server.registerTool(
   "tune_live_wallpaper",
   {
     title: "Tune animated wallpaper",

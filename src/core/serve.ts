@@ -31,11 +31,12 @@ import {
 import { buildPayload, buildResetScript, type PayloadInput } from "./payload.js";
 import { startMediaServer, type MediaServer } from "./media-server.js";
 import { findProject, listPlayable, type WeProject } from "./we-library.js";
+import { resolveCurrentWallpaper, applyChoiceFor } from "./we-current.js";
 import { themeFromVideo, themeFromImage, grabPosterJpeg, findFfmpeg } from "./video-theme.js";
 import { optimizedCopy, probeVideo, needsOptimize, isOptimizing, clearOptimizeRetries, cachedCopy } from "./optimize.js";
 import { buildPanelScript } from "../panel/panel-script.js";
 import { isZcodeProcessRunning } from "./zcode-process.js";
-import { killZcode, launchZcode } from "./launch.js";
+import { killZcode, launchZcode, pickCdpPort } from "./launch.js";
 import {
   cachedSteamPreview,
   refreshSteamPreview,
@@ -611,7 +612,11 @@ export async function startServe(opts: ServeOptions): Promise<void> {
       return;
     }
     lastAutoRestart = now;
-    console.log("serve: ZCode has no CDP port — restarting it with --remote-debugging-port");
+    // pickCdpPort avoids the classic failure where Chrome (or any other tool)
+    // already owns 9222: relaunching on a busy port silently produces no CDP
+    // and the service would keep restarting ZCode every cooldown for nothing.
+    const port = await pickCdpPort(fixedCdpPort ?? 9222);
+    console.log(`serve: ZCode has no CDP port — restarting it with --remote-debugging-port=${port}`);
     // launchZcode alone refuses while an instance is running (it cannot grow a
     // port), so the CDP-less instance must go first. Graceful close keeps the
     // user's work; if ZCode refuses to die the restart is abandoned for now.
@@ -624,7 +629,7 @@ export async function startServe(opts: ServeOptions): Promise<void> {
       console.error("serve: ZCode did not exit; auto-restart abandoned for this cooldown");
       return;
     }
-    const r = await launchZcode(fixedCdpPort ?? 9222).catch((err) => {
+    const r = await launchZcode(port).catch((err) => {
       console.error(`serve: auto-restart failed — ${(err as Error).message}`);
       return { started: false } as const;
     });
@@ -871,6 +876,44 @@ export async function startServe(opts: ServeOptions): Promise<void> {
         scheduleThemeRefresh(config);
         kickPoster(config);
         return sendJson(res, 200, { ok: true, windows, ...publicConfig(config) });
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/source/current") {
+        // Link to whatever Wallpaper Engine is showing right now, read from
+        // WE's own config.json. Scene/application selections degrade to their
+        // preview image — the browser cannot reproduce scene.pkg.
+        const body = JSON.parse(await readBody(req).catch(() => "{}"));
+        const monitor = typeof body?.monitor === "string" && body.monitor ? body.monitor : undefined;
+        const cur = resolveCurrentWallpaper(monitor);
+        if (!cur) {
+          return sendJson(res, 400, {
+            error: "未找到 Wallpaper Engine 当前壁纸（未安装 WE 或未设置壁纸）",
+          });
+        }
+        const choice = applyChoiceFor(cur);
+        if (choice.error || !choice.source || !choice.sourceKind) {
+          return sendJson(res, 400, { error: choice.error ?? "no playable media" });
+        }
+        const config: LiveWallConfig = {
+          ...currentConfig(),
+          source: choice.source,
+          sourceKind: choice.sourceKind,
+          projectId: choice.projectId,
+        };
+        publishedFor = undefined;
+        saveConfig(config);
+        const windows = await pushConfig(config).catch(() => 0);
+        scheduleThemeRefresh(config);
+        kickPoster(config);
+        return sendJson(res, 200, {
+          ok: true,
+          windows,
+          monitor: cur.monitor,
+          title: choice.title,
+          // True when the live scene could not be replayed and a still was used.
+          degraded: !cur.mediaPath,
+          ...publicConfig(config),
+        });
       }
 
       if (req.method === "POST" && url.pathname === "/api/source/path") {

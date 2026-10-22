@@ -1,9 +1,138 @@
 #!/usr/bin/env node
 import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// dist/core/we-current.js
+var we_current_exports = {};
+__export(we_current_exports, {
+  applyChoiceFor: () => applyChoiceFor,
+  resolveCurrentWallpaper: () => resolveCurrentWallpaper
+});
+import fs5 from "node:fs";
+import path5 from "node:path";
+function readSelectedWallpapers() {
+  const out = {};
+  const candidates = [
+    ...["C:/Program Files (x86)/Steam", "C:/Program Files/Steam", "D:/Steam", "E:/Steam", "F:/Steam", "G:/Steam"].map((r) => path5.join(r, "steamapps", "common", "wallpaper_engine")),
+    path5.join(process.env.LOCALAPPDATA ?? "", "Steam", "steamapps", "common", "wallpaper_engine")
+  ];
+  for (const weDir of candidates) {
+    const cfg = path5.join(weDir, "config.json");
+    let text;
+    try {
+      text = fs5.readFileSync(cfg, "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      const json = JSON.parse(text.replace(/^\uFEFF/, ""));
+      for (const section of Object.values(json)) {
+        const sel = section?.general?.wallpaperconfig?.selectedwallpapers;
+        if (sel && typeof sel === "object") {
+          for (const [monitor, entry] of Object.entries(sel)) {
+            if (entry && typeof entry === "object")
+              out[monitor] = entry;
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  return out;
+}
+function projectIdFromDir(dir) {
+  const norm = dir.replace(/\\/g, "/").toLowerCase();
+  const m = norm.match(/workshop\/content\/431960\/(\d+)/);
+  return m ? m[1] : path5.basename(dir);
+}
+function resolveCurrentWallpaper(monitor) {
+  const selected = readSelectedWallpapers();
+  if (!selected)
+    return void 0;
+  const names = Object.keys(selected);
+  const pick = monitor && selected[monitor] ? monitor : names.find((n) => selected[n]?.file);
+  if (!pick)
+    return void 0;
+  const file = selected[pick].file;
+  if (!file)
+    return void 0;
+  const dir = path5.dirname(file);
+  const out = { monitor: pick, file, title: path5.basename(dir) };
+  let json;
+  try {
+    json = JSON.parse(fs5.readFileSync(path5.join(dir, "project.json"), "utf8"));
+  } catch {
+    json = void 0;
+  }
+  const previewName = typeof json?.preview === "string" ? json.preview : "preview.gif";
+  const previewPath = path5.resolve(dir, previewName);
+  out.previewPath = fs5.existsSync(previewPath) ? previewPath : void 0;
+  if (json) {
+    out.id = projectIdFromDir(dir);
+    if (typeof json.title === "string" && json.title.trim())
+      out.title = json.title.trim();
+    const mediaFile = typeof json.file === "string" ? json.file : void 0;
+    if (mediaFile) {
+      const direct = path5.resolve(dir, mediaFile);
+      try {
+        if (fs5.statSync(direct).isFile() && IS_PLAYABLE(direct))
+          out.mediaPath = direct;
+      } catch {
+      }
+    }
+  }
+  return out;
+}
+function applyChoiceFor(cur) {
+  if (cur.mediaPath) {
+    return {
+      source: cur.mediaPath,
+      sourceKind: IS_WEB.test(cur.mediaPath) ? "web" : PLAYABLE_VIDEO.test(cur.mediaPath) ? "video" : "image",
+      projectId: cur.id,
+      title: cur.title
+    };
+  }
+  if (cur.previewPath && IS_STILL.test(cur.previewPath)) {
+    return {
+      source: cur.previewPath,
+      sourceKind: "image",
+      projectId: cur.id,
+      // Scene previews as a wallpaper read as a still, so say so in the title.
+      title: `${cur.title}\uFF08\u9759\u6001\u9884\u89C8\uFF09`
+    };
+  }
+  return {
+    error: `\u6B64 Wallpaper Engine \u58C1\u7EB8\uFF08${cur.title}\uFF09\u6CA1\u6709\u53EF\u5728\u6D4F\u89C8\u5668\u64AD\u653E\u7684\u5A92\u4F53\uFF0C\u4E5F\u6CA1\u6709\u9884\u89C8\u56FE`
+  };
+}
+var PLAYABLE_VIDEO, IS_WEB, IS_GIF, IS_STILL, IS_PLAYABLE;
+var init_we_current = __esm({
+  "dist/core/we-current.js"() {
+    "use strict";
+    PLAYABLE_VIDEO = /\.(mp4|webm|mov|m4v)$/i;
+    IS_WEB = /\.html?$/i;
+    IS_GIF = /\.gif$/i;
+    IS_STILL = /\.(gif|jpe?g|png|webp|bmp|avif)$/i;
+    IS_PLAYABLE = (p) => PLAYABLE_VIDEO.test(p) || IS_WEB.test(p) || IS_GIF.test(p);
+  }
+});
 
 // dist/cli.js
-import fs9 from "node:fs";
-import path9 from "node:path";
+import fs10 from "node:fs";
+import path10 from "node:path";
 import { spawn as spawn2 } from "node:child_process";
 
 // dist/core/config.js
@@ -68,6 +197,14 @@ function saveConfig(config) {
 }
 function currentConfig() {
   return { ...DEFAULT_CONFIG, ...loadConfig() };
+}
+function readServeToken() {
+  try {
+    const value = fs.readFileSync(tokenFile(), "utf8").trim();
+    return value.length > 0 ? value : void 0;
+  } catch {
+    return void 0;
+  }
 }
 
 // dist/core/cdp.js
@@ -335,8 +472,8 @@ function findProject(idOrTitle) {
 
 // dist/core/serve.js
 import http2 from "node:http";
-import fs8 from "node:fs";
-import path8 from "node:path";
+import fs9 from "node:fs";
+import path9 from "node:path";
 import { randomBytes as randomBytes2, createHash as createHash2 } from "node:crypto";
 
 // dist/core/video-theme.js
@@ -5657,12 +5794,15 @@ async function startMediaServer(port) {
   };
 }
 
+// dist/core/serve.js
+init_we_current();
+
 // dist/core/optimize.js
 import { execFile as execFile2 } from "node:child_process";
 import { promisify as promisify2 } from "node:util";
 import { createHash } from "node:crypto";
-import fs5 from "node:fs";
-import path5 from "node:path";
+import fs6 from "node:fs";
+import path6 from "node:path";
 var execFileAsync2 = promisify2(execFile2);
 var OPTIMIZE_PIXEL_THRESHOLD = 1920 * 1080 * 1.3;
 var TARGET_FPS = 30;
@@ -5706,7 +5846,7 @@ var OPTIMIZE_MIN_HEIGHT = 720;
 function stampFor(mediaPath) {
   let stamp = "0";
   try {
-    const st = fs5.statSync(mediaPath);
+    const st = fs6.statSync(mediaPath);
     stamp = `${Math.round(st.mtimeMs)}-${st.size}`;
   } catch {
   }
@@ -5714,7 +5854,7 @@ function stampFor(mediaPath) {
 }
 function cacheFileFor(mediaPath, targetHeight) {
   const key = createHash("sha1").update(`${mediaPath}|${stampFor(mediaPath)}|${targetHeight}`).digest("hex").slice(0, 24);
-  return path5.join(cacheDir(), `${key}.mp4`);
+  return path6.join(cacheDir(), `${key}.mp4`);
 }
 var jobs = /* @__PURE__ */ new Map();
 var RETRY_COOLDOWN_MS = 10 * 60 * 1e3;
@@ -5726,14 +5866,14 @@ function clearOptimizeRetries() {
 function cachedCopy(mediaPath, targetHeight) {
   const dest = cacheFileFor(mediaPath, targetHeight);
   try {
-    return fs5.existsSync(dest) && fs5.statSync(dest).size > 0 ? dest : void 0;
+    return fs6.existsSync(dest) && fs6.statSync(dest).size > 0 ? dest : void 0;
   } catch {
     return void 0;
   }
 }
 function optimizedCopy(mediaPath, targetHeight = 1080) {
   const dest = cacheFileFor(mediaPath, targetHeight);
-  if (fs5.existsSync(dest) && fs5.statSync(dest).size > 0)
+  if (fs6.existsSync(dest) && fs6.statSync(dest).size > 0)
     return dest;
   const failureKey = `${mediaPath}|${stampFor(mediaPath)}`;
   if (jobs.has(mediaPath))
@@ -5750,7 +5890,7 @@ function optimizedCopy(mediaPath, targetHeight = 1080) {
     const ff = await findFfmpeg();
     if (!ff)
       return void 0;
-    fs5.mkdirSync(cacheDir(), { recursive: true });
+    fs6.mkdirSync(cacheDir(), { recursive: true });
     const tmp = `${dest}.part.mp4`;
     try {
       await execFileAsync2(ff.path, [
@@ -5776,9 +5916,9 @@ function optimizedCopy(mediaPath, targetHeight = 1080) {
         tmp,
         "-y"
       ], { timeout: 30 * 60 * 1e3, windowsHide: true });
-      fs5.renameSync(tmp, dest);
-      if (fs5.statSync(dest).size <= 0) {
-        fs5.rmSync(dest, { force: true });
+      fs6.renameSync(tmp, dest);
+      if (fs6.statSync(dest).size <= 0) {
+        fs6.rmSync(dest, { force: true });
         throw new Error("transcoder produced an empty file");
       }
       return dest;
@@ -5788,7 +5928,7 @@ function optimizedCopy(mediaPath, targetHeight = 1080) {
         at: Date.now()
       });
       try {
-        fs5.rmSync(tmp, { force: true });
+        fs6.rmSync(tmp, { force: true });
       } catch {
       }
       return void 0;
@@ -6419,20 +6559,20 @@ async function isZcodeProcessRunning() {
 import { execFile as execFile4, spawn } from "node:child_process";
 import { promisify as promisify4 } from "node:util";
 import net from "node:net";
-import fs6 from "node:fs";
+import fs7 from "node:fs";
 import os3 from "node:os";
-import path6 from "node:path";
+import path7 from "node:path";
 var execFileAsync4 = promisify4(execFile4);
 var ZCODE_EXE_CANDIDATES = process.platform === "win32" ? [
-  process.env.ZCODE_WINDOWS_APP_INSTALL_DIR ? path6.join(process.env.ZCODE_WINDOWS_APP_INSTALL_DIR, "ZCode.exe") : void 0,
+  process.env.ZCODE_WINDOWS_APP_INSTALL_DIR ? path7.join(process.env.ZCODE_WINDOWS_APP_INSTALL_DIR, "ZCode.exe") : void 0,
   "C:\\Program Files\\ZCode\\ZCode.exe",
   "D:\\ZCode\\ZCode.exe",
-  path6.join(os3.homedir(), "AppData", "Local", "Programs", "ZCode", "ZCode.exe")
+  path7.join(os3.homedir(), "AppData", "Local", "Programs", "ZCode", "ZCode.exe")
 ].filter(Boolean) : process.platform === "darwin" ? ["/Applications/ZCode.app/Contents/MacOS/ZCode"] : ["/usr/bin/zcode", "/opt/ZCode/zcode"];
 function findZcodeExecutable() {
   return ZCODE_EXE_CANDIDATES.find((p) => {
     try {
-      return fs6.statSync(p).isFile();
+      return fs7.statSync(p).isFile();
     } catch {
       return false;
     }
@@ -6504,8 +6644,8 @@ async function killZcode() {
 }
 
 // dist/core/steam-preview.js
-import fs7 from "node:fs";
-import path7 from "node:path";
+import fs8 from "node:fs";
+import path8 from "node:path";
 import os4 from "node:os";
 var STEAM_API = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/";
 var WORKSHOP_APP_ID = "431960";
@@ -6520,49 +6660,49 @@ function isWorkshopId(projectId) {
 function localWorkshopProject(projectId) {
   const id = projectId.trim();
   for (const lib of findSteamLibraries()) {
-    const p = path7.join(lib, "steamapps", "workshop", "content", WORKSHOP_APP_ID, id, "project.json");
-    if (fs7.existsSync(p))
+    const p = path8.join(lib, "steamapps", "workshop", "content", WORKSHOP_APP_ID, id, "project.json");
+    if (fs8.existsSync(p))
       return true;
   }
   return false;
 }
 function previewDir() {
-  return path7.join(dataDir(), "steam-previews");
+  return path8.join(dataDir(), "steam-previews");
 }
 function previewCachePath(projectId) {
-  return path7.join(previewDir(), `${projectId.trim()}.jpg`);
+  return path8.join(previewDir(), `${projectId.trim()}.jpg`);
 }
 function cachedSteamPreview(projectId) {
   if (!isWorkshopId(projectId))
     return void 0;
   try {
     const p = previewCachePath(projectId);
-    return fs7.existsSync(p) && fs7.statSync(p).size > 30 * 1024 ? p : void 0;
+    return fs8.existsSync(p) && fs8.statSync(p).size > 30 * 1024 ? p : void 0;
   } catch {
     return void 0;
   }
 }
 function imageSize(imagePath) {
   try {
-    const fd = fs7.openSync(imagePath, "r");
+    const fd = fs8.openSync(imagePath, "r");
     const head = Buffer.alloc(64);
-    fs7.readSync(fd, head, 0, 64, 0);
-    fs7.closeSync(fd);
+    fs8.readSync(fd, head, 0, 64, 0);
+    fs8.closeSync(fd);
     if (head[0] === 71 && head[1] === 73 && head[2] === 70) {
       return { width: head.readUInt16LE(6), height: head.readUInt16LE(8) };
     }
     if (head[0] === 137 && head[1] === 80 && head[2] === 78) {
       const png = Buffer.alloc(24);
-      const fd2 = fs7.openSync(imagePath, "r");
-      fs7.readSync(fd2, png, 0, 24, 0);
-      fs7.closeSync(fd2);
+      const fd2 = fs8.openSync(imagePath, "r");
+      fs8.readSync(fd2, png, 0, 24, 0);
+      fs8.closeSync(fd2);
       return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
     }
     if (head[0] === 255 && head[1] === 216) {
-      const fd3 = fs7.openSync(imagePath, "r");
-      const scan = Buffer.alloc(Math.min(fs7.fstatSync(fd3).size, 512 * 1024));
-      fs7.readSync(fd3, scan, 0, scan.length, 0);
-      fs7.closeSync(fd3);
+      const fd3 = fs8.openSync(imagePath, "r");
+      const scan = Buffer.alloc(Math.min(fs8.fstatSync(fd3).size, 512 * 1024));
+      fs8.readSync(fd3, scan, 0, scan.length, 0);
+      fs8.closeSync(fd3);
       let p = 2;
       while (p + 9 < scan.length) {
         if (scan[p] !== 255) {
@@ -6620,7 +6760,7 @@ async function downloadTo(url, dest) {
   if (!res.ok)
     throw new Error(`HTTP ${res.status}`);
   const ab = await res.arrayBuffer();
-  fs7.writeFileSync(dest, Buffer.from(ab));
+  fs8.writeFileSync(dest, Buffer.from(ab));
 }
 function refreshSteamPreview(projectId, onDone) {
   const id = projectId.trim();
@@ -6636,15 +6776,15 @@ function refreshSteamPreview(projectId, onDone) {
       const url = await fetchDetails(id);
       if (!url)
         throw new Error("no preview_url");
-      fs7.mkdirSync(previewDir(), { recursive: true });
-      const tmp = path7.join(os4.tmpdir(), `zlw-prev-${id}-${Math.random().toString(36).slice(2)}.img`);
+      fs8.mkdirSync(previewDir(), { recursive: true });
+      const tmp = path8.join(os4.tmpdir(), `zlw-prev-${id}-${Math.random().toString(36).slice(2)}.img`);
       await downloadTo(url, tmp);
       const dim = imageSize(tmp);
       if (!dim)
         throw new Error("unreadable image");
-      if (fs7.statSync(tmp).size < 30 * 1024)
+      if (fs8.statSync(tmp).size < 30 * 1024)
         throw new Error("download too small");
-      fs7.renameSync(tmp, previewCachePath(id));
+      fs8.renameSync(tmp, previewCachePath(id));
       failures2.delete(id);
       onDone?.(previewCachePath(id));
     } catch (err) {
@@ -6691,7 +6831,7 @@ var THEME_RETRY_COOLDOWN_MS = 5 * 60 * 1e3;
 var themeFailedAt = /* @__PURE__ */ new Map();
 function posterFileFor(samplePath) {
   const hash = createHash2("sha1").update(samplePath.toLowerCase()).digest("hex").slice(0, 16);
-  return path8.join(dataDir(), `poster-${hash}.jpg`);
+  return path9.join(dataDir(), `poster-${hash}.jpg`);
 }
 var posterJobs = /* @__PURE__ */ new Map();
 var optimizingChecked = /* @__PURE__ */ new Set();
@@ -6719,7 +6859,7 @@ function captureViewNeeds(conn) {
 function themeFor(sourcePath, opts = {}) {
   let mtimeMs = 0;
   try {
-    mtimeMs = fs8.statSync(sourcePath).mtimeMs;
+    mtimeMs = fs9.statSync(sourcePath).mtimeMs;
   } catch {
     return Promise.resolve(void 0);
   }
@@ -6754,7 +6894,7 @@ function themeFor(sourcePath, opts = {}) {
 function themeForImage(sourcePath, opts = {}) {
   let mtimeMs = 0;
   try {
-    mtimeMs = fs8.statSync(sourcePath).mtimeMs;
+    mtimeMs = fs9.statSync(sourcePath).mtimeMs;
   } catch {
     return Promise.resolve(void 0);
   }
@@ -6794,7 +6934,7 @@ function isAnimatedImage(p) {
   return /\.gif$/i.test(p);
 }
 function resolveSource(config) {
-  if (!config.source || !fs8.existsSync(config.source))
+  if (!config.source || !fs9.existsSync(config.source))
     return void 0;
   if (isWeb(config.source))
     return { kind: "web", path: config.source, posterPath: void 0 };
@@ -6814,7 +6954,7 @@ function resolveSource(config) {
 async function ensureOptimized(mediaPath) {
   let stamp = "0";
   try {
-    const st = fs8.statSync(mediaPath);
+    const st = fs9.statSync(mediaPath);
     stamp = `${Math.round(st.mtimeMs)}-${st.size}`;
   } catch {
     return;
@@ -6828,14 +6968,14 @@ async function ensureOptimized(mediaPath) {
     optimizedCopy(mediaPath, displayTargetHeight());
 }
 async function startServe(opts) {
-  fs8.mkdirSync(dataDir(), { recursive: true });
+  fs9.mkdirSync(dataDir(), { recursive: true });
   const stored = currentConfig();
   const apiPort = opts.apiPort ?? stored.apiPort;
   const mediaPort = opts.mediaPort ?? stored.mediaPort;
   const fixedCdpPort = opts.cdpPort ?? (stored.cdpPort > 0 ? stored.cdpPort : void 0);
   const token = randomBytes2(16).toString("hex");
-  fs8.writeFileSync(tokenFile(), token);
-  fs8.writeFileSync(pidFile(), String(process.pid));
+  fs9.writeFileSync(tokenFile(), token);
+  fs9.writeFileSync(pidFile(), String(process.pid));
   const media = await startMediaServer(mediaPort);
   let currentCdpPort;
   const held = /* @__PURE__ */ new Map();
@@ -6852,7 +6992,7 @@ async function startServe(opts) {
     let posterPath = source.posterPath;
     if (!posterPath && source.kind === "video") {
       const posterFile = posterFileFor(source.originalPath ?? source.path);
-      if (fs8.existsSync(posterFile))
+      if (fs9.existsSync(posterFile))
         posterPath = posterFile;
     }
     if (config.projectId && (source.kind === "image" || source.kind === "web")) {
@@ -6969,13 +7109,13 @@ async function startServe(opts) {
       if (theme.posterJpeg) {
         try {
           const posterFile = posterFileFor(sample);
-          fs8.writeFileSync(posterFile, theme.posterJpeg);
-          for (const entry of fs8.readdirSync(dataDir())) {
-            const isStale = entry === "poster.jpg" || entry.startsWith("poster-") && entry !== path8.basename(posterFile);
+          fs9.writeFileSync(posterFile, theme.posterJpeg);
+          for (const entry of fs9.readdirSync(dataDir())) {
+            const isStale = entry === "poster.jpg" || entry.startsWith("poster-") && entry !== path9.basename(posterFile);
             if (!isStale)
               continue;
             try {
-              fs8.rmSync(path8.join(dataDir(), entry), { force: true });
+              fs9.rmSync(path9.join(dataDir(), entry), { force: true });
             } catch {
             }
           }
@@ -6994,7 +7134,7 @@ async function startServe(opts) {
     const sample = source.originalPath ?? source.path;
     const posterFile = posterFileFor(sample);
     try {
-      if (fs8.existsSync(posterFile))
+      if (fs9.existsSync(posterFile))
         return;
     } catch {
     }
@@ -7008,7 +7148,7 @@ async function startServe(opts) {
         const from = cachedCopy(sample, displayTargetHeight()) ?? sample;
         const buf = await grabPosterJpeg(ff.path, from, 0);
         if (buf)
-          fs8.writeFileSync(posterFile, buf);
+          fs9.writeFileSync(posterFile, buf);
       } catch {
       } finally {
         posterJobs.delete(sample);
@@ -7156,7 +7296,7 @@ async function startServe(opts) {
        * resolve the wrong wallpaper (or fall back to the first entry).
        */
       source: source?.originalPath ?? source?.path,
-      sourceName: config.projectId ? findProject(config.projectId)?.title ?? path8.basename(config.source ?? "") : config.source ? path8.basename(config.source) : void 0,
+      sourceName: config.projectId ? findProject(config.projectId)?.title ?? path9.basename(config.source ?? "") : config.source ? path9.basename(config.source) : void 0,
       cdpPort: runtimeState.cdpPort,
       mediaPort: media.port
     };
@@ -7254,7 +7394,7 @@ async function startServe(opts) {
           title: p.title,
           type: p.type,
           source: p.source,
-          media: p.mediaPath ? path8.basename(p.mediaPath) : void 0
+          media: p.mediaPath ? path9.basename(p.mediaPath) : void 0
         }));
         return sendJson(res, 200, { projects });
       }
@@ -7278,10 +7418,44 @@ async function startServe(opts) {
         kickPoster(config);
         return sendJson(res, 200, { ok: true, windows, ...publicConfig(config) });
       }
+      if (req.method === "POST" && url.pathname === "/api/source/current") {
+        const body = JSON.parse(await readBody(req).catch(() => "{}"));
+        const monitor = typeof body?.monitor === "string" && body.monitor ? body.monitor : void 0;
+        const cur = resolveCurrentWallpaper(monitor);
+        if (!cur) {
+          return sendJson(res, 400, {
+            error: "\u672A\u627E\u5230 Wallpaper Engine \u5F53\u524D\u58C1\u7EB8\uFF08\u672A\u5B89\u88C5 WE \u6216\u672A\u8BBE\u7F6E\u58C1\u7EB8\uFF09"
+          });
+        }
+        const choice = applyChoiceFor(cur);
+        if (choice.error || !choice.source || !choice.sourceKind) {
+          return sendJson(res, 400, { error: choice.error ?? "no playable media" });
+        }
+        const config = {
+          ...currentConfig(),
+          source: choice.source,
+          sourceKind: choice.sourceKind,
+          projectId: choice.projectId
+        };
+        publishedFor = void 0;
+        saveConfig(config);
+        const windows = await pushConfig(config).catch(() => 0);
+        scheduleThemeRefresh(config);
+        kickPoster(config);
+        return sendJson(res, 200, {
+          ok: true,
+          windows,
+          monitor: cur.monitor,
+          title: choice.title,
+          // True when the live scene could not be replayed and a still was used.
+          degraded: !cur.mediaPath,
+          ...publicConfig(config)
+        });
+      }
       if (req.method === "POST" && url.pathname === "/api/source/path") {
         const body = JSON.parse(await readBody(req));
-        const file = typeof body?.path === "string" ? path8.resolve(body.path) : "";
-        if (!file || !fs8.existsSync(file)) {
+        const file = typeof body?.path === "string" ? path9.resolve(body.path) : "";
+        if (!file || !fs9.existsSync(file)) {
           return sendJson(res, 400, { error: "file not found" });
         }
         if (file.startsWith(cacheDir())) {
@@ -7302,7 +7476,7 @@ async function startServe(opts) {
       }
       if (req.method === "POST" && url.pathname === "/api/upload") {
         const body = JSON.parse(await readBody(req));
-        const name = typeof body?.name === "string" ? path8.basename(body.name) : "";
+        const name = typeof body?.name === "string" ? path9.basename(body.name) : "";
         const dataUri = typeof body?.dataUri === "string" ? body.dataUri : "";
         const m = /^data:(video\/[\w.+-]+|image\/[\w.+-]+);base64,(.+)$/.exec(dataUri);
         if (!m || !name)
@@ -7313,8 +7487,8 @@ async function startServe(opts) {
             error: `file too large (max ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB)`
           });
         }
-        const dir = path8.join(dataDir(), "uploads");
-        fs8.mkdirSync(dir, { recursive: true });
+        const dir = path9.join(dataDir(), "uploads");
+        fs9.mkdirSync(dir, { recursive: true });
         const extByMime = {
           "image/jpeg": ".jpg",
           "image/png": ".png",
@@ -7328,10 +7502,10 @@ async function startServe(opts) {
           "video/x-matroska": ".mkv"
         };
         let safeName = name;
-        if (!path8.extname(safeName))
+        if (!path9.extname(safeName))
           safeName += extByMime[m[1]] ?? "";
-        const dest = path8.join(dir, safeName);
-        fs8.writeFileSync(dest, bytes);
+        const dest = path9.join(dir, safeName);
+        fs9.writeFileSync(dest, bytes);
         const config = {
           ...currentConfig(),
           source: dest,
@@ -7403,7 +7577,7 @@ async function startServe(opts) {
   server.on("error", (err) => console.error(`serve: http error \u2014 ${err.message}`));
   const shutdown = async () => {
     try {
-      fs8.rmSync(pidFile(), { force: true });
+      fs9.rmSync(pidFile(), { force: true });
     } catch {
     }
     for (const [, s] of held)
@@ -7467,6 +7641,9 @@ Commands:
     --dim <0-100>                Darken the wallpaper
     --fit <cover|contain>        Framing mode
     --no-monet                   Keep ZCode's original colors
+  link [monitor]                 Use the wallpaper Wallpaper Engine is showing
+                                 right now (Monitor0/Monitor1/...; scene types
+                                 fall back to their preview image)
   serve [--api-port M] [--media-port P] [--detach]
                                  Resident service + settings panel (default API 9334)
   stop                           Stop the detached service
@@ -7498,6 +7675,7 @@ async function main() {
         const projects = listPlayable();
         if (projects.length === 0) {
           console.log("No playable Wallpaper Engine projects found.");
+          console.log("Wallpaper Engine \u672A\u5B89\u88C5\u6216\u6CA1\u6709\u53EF\u64AD\u9879\u76EE \u2014 \u8DF3\u8FC7\u58C1\u7EB8\u5E93\uFF0C\u76F4\u63A5\u7528\u672C\u5730\u6587\u4EF6\uFF1Aapply <\u89C6\u9891/\u56FE\u7247\u8DEF\u5F84>\uFF0C\u6216\u9762\u677F\u91CC\u7684 \u89C6\u9891\u2026/\u56FE\u7247\u2026 \u6309\u94AE\u3002");
           break;
         }
         for (const p of projects) {
@@ -7513,7 +7691,7 @@ async function main() {
           process.exitCode = 1;
           break;
         }
-        const asFile = fs9.existsSync(target) ? path9.resolve(target) : void 0;
+        const asFile = fs10.existsSync(target) ? path10.resolve(target) : void 0;
         const project = asFile ? void 0 : findProject(target);
         if (!asFile && !project?.mediaPath) {
           console.error(`No Wallpaper Engine project or file matching "${target}".`);
@@ -7535,8 +7713,57 @@ async function main() {
         if (has("--no-monet"))
           config.monet = false;
         saveConfig(config);
-        console.log(`Stored "${project?.title ?? path9.basename(config.source)}" as the animated wallpaper.`);
+        console.log(`Stored "${project?.title ?? path10.basename(config.source)}" as the animated wallpaper.`);
         console.log("Run `zcode-livewall serve` (or use the plugin panel) to inject it.");
+        break;
+      }
+      case "link": {
+        const monitor = rest.find((a) => !a.startsWith("--"));
+        const live = async () => {
+          const token = readServeToken();
+          if (!token)
+            return void 0;
+          try {
+            const res = await fetch(`http://127.0.0.1:${currentConfig().apiPort}/api/source/current`, {
+              method: "POST",
+              headers: { "x-zlw-token": token, "Content-Type": "application/json" },
+              body: JSON.stringify(monitor ? { monitor } : {}),
+              signal: AbortSignal.timeout(8e3)
+            });
+            const data = await res.json();
+            if (!res.ok || data?.error)
+              throw new Error(data?.error ?? `HTTP ${res.status}`);
+            return data;
+          } catch {
+            return void 0;
+          }
+        };
+        const viaService = await live();
+        if (viaService) {
+          console.log(`\u5DF2\u94FE\u63A5 WE \u5F53\u524D\u58C1\u7EB8\u300C${viaService.title}\u300D\u5230 ${viaService.windows ?? 0} \u4E2A\u7A97\u53E3` + (viaService.degraded ? "\uFF08scene \u58C1\u7EB8\uFF0C\u663E\u793A\u9759\u6001\u9884\u89C8\uFF09" : "") + "\u3002");
+          break;
+        }
+        const { resolveCurrentWallpaper: resolveCurrentWallpaper2, applyChoiceFor: applyChoiceFor2 } = await Promise.resolve().then(() => (init_we_current(), we_current_exports));
+        const cur = resolveCurrentWallpaper2(monitor);
+        if (!cur) {
+          console.error("\u672A\u627E\u5230 Wallpaper Engine \u5F53\u524D\u58C1\u7EB8\uFF08\u672A\u5B89\u88C5 WE \u6216\u672A\u8BBE\u7F6E\u58C1\u7EB8\uFF09\u3002");
+          process.exitCode = 1;
+          break;
+        }
+        const choice = applyChoiceFor2(cur);
+        if (choice.error || !choice.source || !choice.sourceKind) {
+          console.error(choice.error ?? "no playable media");
+          process.exitCode = 1;
+          break;
+        }
+        saveConfig({
+          ...currentConfig(),
+          source: choice.source,
+          sourceKind: choice.sourceKind,
+          projectId: choice.projectId
+        });
+        console.log(`\u5DF2\u4FDD\u5B58 WE \u5F53\u524D\u58C1\u7EB8\u300C${choice.title}\u300D\uFF08${cur.monitor}\uFF09\u3002`);
+        console.log("\u8FD0\u884C serve --detach\uFF08\u6216\u7B49 MCP \u81EA\u52A8\u62C9\u8D77\uFF09\u540E\u751F\u6548\u3002");
         break;
       }
       case "serve": {
@@ -7556,7 +7783,7 @@ async function main() {
       case "stop": {
         let pid;
         try {
-          pid = Number(fs9.readFileSync(pidFile(), "utf8").trim());
+          pid = Number(fs10.readFileSync(pidFile(), "utf8").trim());
         } catch {
         }
         if (!pid) {
@@ -7565,7 +7792,7 @@ async function main() {
         }
         try {
           process.kill(pid);
-          fs9.rmSync(pidFile(), { force: true });
+          fs10.rmSync(pidFile(), { force: true });
           console.log(`Stopped serve (pid ${pid}).`);
         } catch (err) {
           console.error(`Could not stop pid ${pid}: ${err.message}`);
@@ -7610,9 +7837,9 @@ async function startDetached(apiPort, mediaPort, cdpPort) {
   if (already !== void 0) {
     throw new Error(`a livewall service is already running on port ${apiPort} (pid ${already})`);
   }
-  fs9.mkdirSync(dataDir(), { recursive: true });
-  const logFile = path9.join(dataDir(), "serve.log");
-  const out = fs9.openSync(logFile, "a");
+  fs10.mkdirSync(dataDir(), { recursive: true });
+  const logFile = path10.join(dataDir(), "serve.log");
+  const out = fs10.openSync(logFile, "a");
   const args = [process.argv[1], "serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)];
   if (cdpPort)
     args.push("--port", String(cdpPort));
@@ -7622,7 +7849,7 @@ async function startDetached(apiPort, mediaPort, cdpPort) {
     windowsHide: true
   });
   child.unref();
-  fs9.closeSync(out);
+  fs10.closeSync(out);
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500));
     try {

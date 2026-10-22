@@ -9,6 +9,8 @@
 ## 功能
 
 - **读取 Wallpaper Engine 壁纸库** — 自动扫描各 Steam 库的 `projects/myprojects`、`projects/defaultprojects`，以及已订阅的创意工坊项目（appid `431960`）
+- **链接当前壁纸** — `link` 命令、面板与 MCP 工具可一键采用 Wallpaper Engine 此刻正在显示的壁纸；scene 类项目自动退到静态预览图
+- **没有 Wallpaper Engine 也能用** — 未安装时壁纸库为空属预期：导入本地视频/图片即可，未设壁纸时整个界面呈毛玻璃半透明
 - **视频类项目** — 以 `<video>` 循环播放，支持暂停、倍速、窗口失焦自动暂停
 - **网页 / 场景类项目** — 以 sandboxed `<iframe>` 注入；动态 GIF 在 poster 层播放
 - **导入本地文件** — 面板可直接导入任意视频或图片（JPG / PNG / WebP），无需安装 Wallpaper Engine

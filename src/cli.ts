@@ -20,6 +20,7 @@ import {
   DEFAULT_CONFIG,
   loadConfig,
   pidFile,
+  readServeToken,
   saveConfig,
   type LiveWallConfig,
 } from "./core/config.js";
@@ -38,6 +39,9 @@ Commands:
     --dim <0-100>                Darken the wallpaper
     --fit <cover|contain>        Framing mode
     --no-monet                   Keep ZCode's original colors
+  link [monitor]                 Use the wallpaper Wallpaper Engine is showing
+                                 right now (Monitor0/Monitor1/...; scene types
+                                 fall back to their preview image)
   serve [--api-port M] [--media-port P] [--detach]
                                  Resident service + settings panel (default API 9334)
   stop                           Stop the detached service
@@ -72,6 +76,10 @@ async function main(): Promise<void> {
         const projects = listPlayable();
         if (projects.length === 0) {
           console.log("No playable Wallpaper Engine projects found.");
+          console.log(
+            "Wallpaper Engine 未安装或没有可播项目 — 跳过壁纸库，直接用本地文件：" +
+              "apply <视频/图片路径>，或面板里的 视频…/图片… 按钮。"
+          );
           break;
         }
         for (const p of projects) {
@@ -117,6 +125,59 @@ async function main(): Promise<void> {
         saveConfig(config);
         console.log(`Stored "${project?.title ?? path.basename(config.source!)}" as the animated wallpaper.`);
         console.log("Run `zcode-livewall serve` (or use the plugin panel) to inject it.");
+        break;
+      }
+      case "link": {
+        // Adopt the wallpaper Wallpaper Engine is showing right now.
+        const monitor = rest.find((a) => !a.startsWith("--"));
+        const live = async (): Promise<{ windows?: number; title?: string; degraded?: boolean } | undefined> => {
+          const token = readServeToken();
+          if (!token) return undefined;
+          try {
+            const res = await fetch(`http://127.0.0.1:${currentConfig().apiPort}/api/source/current`, {
+              method: "POST",
+              headers: { "x-zlw-token": token, "Content-Type": "application/json" },
+              body: JSON.stringify(monitor ? { monitor } : {}),
+              signal: AbortSignal.timeout(8000),
+            });
+            const data = (await res.json()) as any;
+            if (!res.ok || data?.error) throw new Error(data?.error ?? `HTTP ${res.status}`);
+            return data;
+          } catch {
+            return undefined;
+          }
+        };
+        const viaService = await live();
+        if (viaService) {
+          console.log(
+            `已链接 WE 当前壁纸「${viaService.title}」到 ${viaService.windows ?? 0} 个窗口` +
+              (viaService.degraded ? "（scene 壁纸，显示静态预览）" : "") +
+              "。"
+          );
+          break;
+        }
+        // Service down: resolve locally, store the config, tell the user.
+        const { resolveCurrentWallpaper, applyChoiceFor } = await import("./core/we-current.js");
+        const cur = resolveCurrentWallpaper(monitor);
+        if (!cur) {
+          console.error("未找到 Wallpaper Engine 当前壁纸（未安装 WE 或未设置壁纸）。");
+          process.exitCode = 1;
+          break;
+        }
+        const choice = applyChoiceFor(cur);
+        if (choice.error || !choice.source || !choice.sourceKind) {
+          console.error(choice.error ?? "no playable media");
+          process.exitCode = 1;
+          break;
+        }
+        saveConfig({
+          ...currentConfig(),
+          source: choice.source,
+          sourceKind: choice.sourceKind,
+          projectId: choice.projectId,
+        });
+        console.log(`已保存 WE 当前壁纸「${choice.title}」（${cur.monitor}）。`);
+        console.log("运行 serve --detach（或等 MCP 自动拉起）后生效。");
         break;
       }
       case "serve": {

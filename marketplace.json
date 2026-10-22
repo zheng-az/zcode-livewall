@@ -5,11 +5,11 @@
     {
       "name": "zcode-livewall",
       "description": "Animated wallpaper for the ZCode desktop client: streams local Wallpaper Engine projects (video / web / scene) behind the UI and adapts the whole interface with Material Design 3 (Monet) dynamic color sampled from the wallpaper.",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "author": "zheng-az",
       "license": "MIT",
       "source": "./"
     }
   ],
-  "version": "0.2.5"
+  "version": "0.2.6"
 }

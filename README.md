@@ -9,6 +9,8 @@ The companion to [zcode-beautify](https://github.com/Logocceai/zcode-beautify): 
 ## Features
 
 - **Wallpaper Engine library** — reads `projects/myprojects`, `projects/defaultprojects` and subscribed Workshop items (appid `431960`) from every Steam library listed in `libraryfolders.vdf`.
+- **Link the live wallpaper** — `link` (CLI), a panel action and the `link_wallpaper_engine` MCP tool adopt whatever Wallpaper Engine is showing right now; scene types fall back to their preview image.
+- **Works without Wallpaper Engine** — no WE installed means no library, not no plugin: import any local video/image, and with no wallpaper set the whole UI settles into a frosted-glass translucency.
 - **Video projects** — played in a looping `<video>` layer with pause, playback speed, and pause-on-blur.
 - **Web and scene projects** — injected as a sandboxed `<iframe>`; animated GIF previews play on the poster layer.
 - **Local files** — import any video or image (JPG / PNG / WebP) straight from the settings panel, with no Wallpaper Engine install.

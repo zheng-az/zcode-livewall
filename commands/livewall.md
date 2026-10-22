@@ -11,6 +11,7 @@ description: 给 ZCode 设置或调整动态（视频）壁纸
    若 `node` 不在 PATH（MCP 工具缺失即此症状），改用插件目录的
    `scripts\start-livewall.cmd [壁纸文件] [--dim 35]` 一键启动，或用
    `where node` / 常见安装路径找到任意 Node 20+ 再执行 CLI。
+   返回 0 个项目 = 没有 Wallpaper Engine，跳过库，直接用本地文件路径执行 apply。
 2. 运行 `node dist/cli.js apply <目标>` 写入配置。
 3. 运行 `node dist/cli.js serve --detach` 启动注入（已在跑则跳过）。
 4. 报告实际选中的壁纸名、注入窗口数，以及面板入口（ZCode 右下角水晶按钮）。
