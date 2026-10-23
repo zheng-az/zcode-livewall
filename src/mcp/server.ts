@@ -39,15 +39,32 @@ function isServeRunning(): boolean {
  * earliest reliable hook: if the resident service is not up (reboot, manual
  * stop, crash), spawn it detached so the wallpaper recovers on its own instead
  * of surfacing "service is not running" to the agent.
+ *
+ * Works both as the ESM bundle (spawns `node dist/cli.js`) and as the compiled
+ * zcode-livewall-mcp.exe (spawns the sibling zcode-livewall.exe) — the exe
+ * path is detected via process.execPath, so no import.meta in CJS builds.
  */
 function ensureServe(): void {
   if (isServeRunning()) return;
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const cli = path.join(here, "..", "cli.js");
-  if (!fs.existsSync(cli)) return;
+  const exe = process.execPath.toLowerCase();
+  const isCompiledExe = exe.endsWith("zcode-livewall-mcp.exe");
+  let cmd: string;
+  let args: string[];
+  if (isCompiledExe) {
+    const sibling = path.join(path.dirname(process.execPath), "zcode-livewall.exe");
+    if (!fs.existsSync(sibling)) return;
+    cmd = sibling;
+    args = ["serve", "--detach"];
+  } else {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const cli = path.join(here, "..", "cli.js");
+    if (!fs.existsSync(cli)) return;
+    cmd = process.execPath;
+    args = [cli, "serve", "--detach"];
+  }
   const cfg = currentConfig();
   try {
-    const child = spawn(process.execPath, [cli, "serve", "--detach"], {
+    const child = spawn(cmd, args, {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
@@ -280,4 +297,12 @@ server.registerTool(
   }
 );
 
-await server.connect(new StdioServerTransport());
+// Wrapped in an async main so the CJS build for the compiled exe is valid
+// (CJS has no top-level await). The MCP SDK keeps stdio alive after connect,
+// so no explicit wait is needed in the ESM bundle either.
+void server
+  .connect(new StdioServerTransport())
+  .catch((err) => {
+    console.error(`[zcode-livewall] MCP transport failed: ${(err as Error).message}`);
+    process.exitCode = 1;
+  });

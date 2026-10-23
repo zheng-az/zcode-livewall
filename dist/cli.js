@@ -7593,6 +7593,31 @@ async function startServe(opts) {
   console.log(`serve: media on http://127.0.0.1:${media.port} (token-gated)`);
   console.log(`serve: CDP ${fixedCdpPort ? `pinned to ${fixedCdpPort}` : "auto-discovering"}`);
   await poll();
+  try {
+    const marker = path9.join(dataDir(), "first-run-linked");
+    const cfg = currentConfig();
+    if (!fs9.existsSync(marker)) {
+      fs9.writeFileSync(marker, (/* @__PURE__ */ new Date()).toISOString());
+      if (!cfg.source) {
+        const cur = resolveCurrentWallpaper();
+        if (cur) {
+          const choice = applyChoiceFor(cur);
+          if (choice.source && choice.sourceKind) {
+            saveConfig({
+              ...cfg,
+              source: choice.source,
+              sourceKind: choice.sourceKind,
+              projectId: choice.projectId
+            });
+            console.log(`serve: first run \u2014 linked Wallpaper Engine's current wallpaper "${choice.title}" (${cur.monitor})` + (cur.mediaPath ? "" : " [static preview]"));
+            publishedFor = void 0;
+            await poll();
+          }
+        }
+      }
+    }
+  } catch {
+  }
   let steamRetryAt = 0;
   for (; ; ) {
     await new Promise((r) => setTimeout(r, POLL_MS));

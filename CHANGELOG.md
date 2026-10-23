@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.4.0
+
+No Node.js required — the plugin ships standalone executables.
+
+### Added
+
+- **Standalone Windows executables** — `dist/zcode-livewall.exe` (CLI +
+  resident service) and `dist/zcode-livewall-mcp.exe` (MCP server), compiled
+  with `bun build --compile`. A machine with no Node.js at all now gets the
+  full feature set, MCP auto-recovery included.
+- `plugin.json` boots the MCP server from the exe directly — no wrapper, no
+  PATH probing.
+- `scripts/start-livewall.cmd` prefers the bundled exes and only falls back
+  to a Node >= 18 lookup when they are missing.
+
+### Changed
+
+- MCP `ensureServe` spawns the sibling exe when running compiled, and
+  `node dist/cli.js` when running as the ESM bundle.
+
+
+## v0.3.0
+
+Zero-touch onboarding for new devices.
+
+### Added
+
+- **Resilient MCP launcher** — `plugin.json` now boots the MCP server through
+  `scripts/mcp-launch.cmd`, which locates any Node >= 18 (PATH, common install
+  dirs, version-gated). A machine without `node` on PATH no longer loses the
+  whole plugin.
+- **First-run wallpaper adoption** — on a fresh install with no wallpaper set,
+  the resident service links whatever Wallpaper Engine is currently showing
+  (once, marker-file guarded; deliberate resets are never undone).
+- `scripts/start-livewall.cmd` shares the same Node-finding logic.
+
+## v0.2.6
+
+### Added
+
+- **Link the current Wallpaper Engine wallpaper** — `link` CLI command, the
+  `link_wallpaper_engine` MCP tool and `POST /api/source/current` adopt the
+  wallpaper WE is showing right now (read from WE's own config.json).
+  Scene/application selections degrade to their preview image.
+- **No-WE devices default to frost** — an empty library is guidance, not an
+  error; with no wallpaper set the UI settles into the frosted-glass idle look.
+
+
 ## v0.2.0
 
 Automatic recovery: the wallpaper now comes back on its own after restarts —

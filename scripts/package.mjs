@@ -21,7 +21,11 @@ const pluginFiles = [
   "skills/livewall/SKILL.md",
   "dist/cli.js",
   "dist/mcp/server.js",
+  "dist/zcode-livewall.exe",
+  "dist/zcode-livewall-mcp.exe",
+  "scripts/start-livewall.cmd",
   "README.md",
+  "README.zh-CN.md",
   "LICENSE",
   "package.json",
 ];
