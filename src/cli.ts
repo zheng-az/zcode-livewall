@@ -262,7 +262,15 @@ async function startDetached(
   fs.mkdirSync(dataDir(), { recursive: true });
   const logFile = path.join(dataDir(), "serve.log");
   const out = fs.openSync(logFile, "a");
-  const args = [process.argv[1], "serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)];
+  // Under the compiled exe (bun), argv[1] is the first USER argument, not a
+  // script path — re-spawning [argv[1], "serve", ...] would mangle the child
+  // command line into a second "serve" token and print USAGE forever. The
+  // execPath alone is the whole program there; under Node the script path
+  // must precede the subcommand.
+  const isCompiledExe = process.execPath.toLowerCase().endsWith("zcode-livewall.exe");
+  const args = isCompiledExe
+    ? ["serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)]
+    : [process.argv[1], "serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)];
   if (cdpPort) args.push("--port", String(cdpPort));
   const child = spawn(process.execPath, args, {
     detached: true,

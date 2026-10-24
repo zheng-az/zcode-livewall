@@ -7865,7 +7865,8 @@ async function startDetached(apiPort, mediaPort, cdpPort) {
   fs10.mkdirSync(dataDir(), { recursive: true });
   const logFile = path10.join(dataDir(), "serve.log");
   const out = fs10.openSync(logFile, "a");
-  const args = [process.argv[1], "serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)];
+  const isCompiledExe = process.execPath.toLowerCase().endsWith("zcode-livewall.exe");
+  const args = isCompiledExe ? ["serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)] : [process.argv[1], "serve", "--api-port", String(apiPort), "--media-port", String(mediaPort)];
   if (cdpPort)
     args.push("--port", String(cdpPort));
   const child = spawn2(process.execPath, args, {
